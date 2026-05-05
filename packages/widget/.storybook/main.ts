@@ -32,7 +32,7 @@ const config: StorybookConfig = {
     const widgetApiUrl =
       process.env.WIDGET_API_URL ||
       loadEnvVar("WIDGET_API_URL") ||
-      "http://localhost:3000";
+      "";
     config.define = {
       ...config.define,
       "process.env.WIDGET_API_URL": JSON.stringify(widgetApiUrl),

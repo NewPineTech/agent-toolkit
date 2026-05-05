@@ -20,14 +20,26 @@ prompt_or_default() {
   local prompt_text="$1" default_val="$2" var_name="$3"
   local input
   if [ -n "$default_val" ]; then
-    read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default_val}]: ")" input
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default_val}]: ")" input </dev/tty
     eval "$var_name=\"${input:-$default_val}\""
   else
-    read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input </dev/tty
     while [ -z "$input" ]; do
       echo -e "${RED}  This field is required.${NC}"
-      read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input
+      read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input </dev/tty
     done
+    eval "$var_name=\"$input\""
+  fi
+}
+
+prompt_optional() {
+  local prompt_text="$1" default_val="$2" var_name="$3"
+  local input
+  if [ -n "$default_val" ]; then
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default_val}]: ")" input </dev/tty
+    eval "$var_name=\"${input:-$default_val}\""
+  else
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input </dev/tty
     eval "$var_name=\"$input\""
   fi
 }
@@ -93,15 +105,18 @@ ok "docker compose"
 echo ""
 
 # ── Clone ───────────────────────────────────────────────────────────
-if [ -d "$INSTALL_DIR/.git" ]; then
+if [ -f "$(pwd)/package.json" ] && [ -d "$(pwd)/.git" ]; then
+  # Running from inside the local repo — skip clone
+  ok "Using local repository at $(pwd)"
+elif [ -d "$INSTALL_DIR/.git" ]; then
   info "Directory '$INSTALL_DIR' already exists — pulling latest..."
   git -C "$INSTALL_DIR" pull --ff-only || warn "Pull failed; continuing with existing code."
+  cd "$INSTALL_DIR"
 else
   info "Cloning $REPO_URL → $INSTALL_DIR"
   git clone "$REPO_URL" "$INSTALL_DIR"
+  cd "$INSTALL_DIR"
 fi
-
-cd "$INSTALL_DIR"
 ok "Repository ready at $(pwd)"
 echo ""
 
@@ -115,6 +130,10 @@ echo ""
 echo -e "${BOLD}── Server Configuration ─────────────────────────────${NC}"
 echo ""
 prompt_or_default "Server port" "3000" SERVER_PORT
+
+# WIDGET_API_URL can be pre-set via env; otherwise require explicit input
+_default_widget_api_url="${WIDGET_API_URL:-}"
+prompt_optional "Widget API URL (Server URL)" "$_default_widget_api_url" WIDGET_API_URL
 echo ""
 
 # ── Environment file ───────────────────────────────────────────────
@@ -125,7 +144,7 @@ if [ ! -f "$ENV_FILE" ]; then
   # Auto-generate secrets
   JWT_SECRET=$(generate_secret)
   ENCRYPTION_KEY=$(generate_secret)
-  POSTGRES_PASSWORD=$(openssl rand -base64 24 2>/dev/null || head -c 32 /dev/urandom | base64 | head -c 32)
+  POSTGRES_PASSWORD=$(generate_secret)
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" "$ENV_FILE"
@@ -158,10 +177,15 @@ echo ""
 # a file named ".env", not ".env.prod", so we must pass --env-file explicitly.
 COMPOSE="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
 
-# ── Build production image ─────────────────────────────────────────
-info "Building production Docker image..."
+# ── Build production images ────────────────────────────────────────
+info "Building server image..."
 $COMPOSE build server
-ok "Production image built"
+ok "Server image built"
+echo ""
+
+info "Building Storybook image (WIDGET_API_URL=$WIDGET_API_URL)..."
+WIDGET_API_URL="$WIDGET_API_URL" $COMPOSE build storybook
+ok "Storybook image built"
 echo ""
 
 # ── Start infrastructure ───────────────────────────────────────────
@@ -185,7 +209,9 @@ fi
 
 # ── Run migrations ─────────────────────────────────────────────────
 info "Running database migrations..."
-$COMPOSE --profile migrate run --rm migrate && ok "Migrations applied" || warn "Migration failed — you can retry with: ./scripts/deploy.sh migrate"
+$COMPOSE run --rm --entrypoint "" server sh -c 'cd /app/packages/server && node dist/db/migrate.js' \
+  && ok "Migrations applied" \
+  || warn "Migration failed — you can retry with: ./scripts/deploy.sh migrate"
 echo ""
 
 # ── Workspace creation ─────────────────────────────────────────────
@@ -195,7 +221,7 @@ echo -e "  A workspace connects the widget to your RAGFlow agent."
 echo -e "  You need your RAGFlow agent ID, API key, and server URL."
 echo ""
 
-read -rp "$(echo -e "${CYAN}Create a workspace now? (Y/n)${NC}: ")" CREATE_WS
+read -rp "$(echo -e "${CYAN}Create a workspace now? (Y/n)${NC}: ")" CREATE_WS </dev/tty
 CREATE_WS="${CREATE_WS:-Y}"
 
 if [[ "$CREATE_WS" =~ ^[Yy]$ ]]; then
@@ -215,9 +241,20 @@ if [[ "$CREATE_WS" =~ ^[Yy]$ ]]; then
   source "$ENV_FILE"
   set +a
 
-  DATABASE_URL="postgresql://${POSTGRES_USER:-agent_toolkit}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB:-agent_toolkit}"
-
   info "Creating workspace..."
+
+  workspace_args=(
+    --id "$WS_ID"
+    --agent-id "$WS_AGENT_ID"
+    --api-key "$WS_API_KEY"
+    --base-url "$WS_BASE_URL"
+    --auth-mode "$WS_AUTH_MODE"
+    --max-requests "$WS_MAX_REQUESTS"
+    --window-ms "$WS_WINDOW_MS"
+  )
+  if [ -n "${WS_DOMAINS//[[:space:]]/}" ]; then
+    workspace_args+=(--domains "$WS_DOMAINS")
+  fi
 
   # Run create-workspace inside the server container (has network access to postgres)
   $COMPOSE run --rm \
@@ -225,28 +262,14 @@ if [[ "$CREATE_WS" =~ ^[Yy]$ ]]; then
     -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
     --entrypoint "" \
     server \
-    node -e "
-      const { execSync } = require('child_process');
-      const args = [
-        '--id', '${WS_ID}',
-        '--agent-id', '${WS_AGENT_ID}',
-        '--api-key', '${WS_API_KEY}',
-        '--base-url', '${WS_BASE_URL}',
-        '--auth-mode', '${WS_AUTH_MODE}',
-        '--max-requests', '${WS_MAX_REQUESTS}',
-        '--window-ms', '${WS_WINDOW_MS}',
-      ];
-      if ('${WS_DOMAINS}'.trim()) args.push('--domains', '${WS_DOMAINS}');
-      execSync(
-        'node --import tsx/esm packages/server/src/db/create-workspace.ts ' + args.join(' '),
-        { stdio: 'inherit', cwd: '/app' }
-      );
-    " && ok "Workspace '${WS_ID}' created successfully" || warn "Workspace creation failed. You can retry manually with: pnpm db:create-workspace"
+    node /app/packages/server/dist/db/create-workspace.js "${workspace_args[@]}" \
+    && ok "Workspace '${WS_ID}' created successfully" \
+    || warn "Workspace creation failed. You can retry manually with: ./scripts/deploy.sh create-workspace"
   echo ""
 else
   echo ""
   info "Skipping workspace creation. You can create one later with:"
-  echo -e "    ${CYAN}pnpm db:create-workspace -- --id ws_my_project --agent-id <UUID> --api-key <KEY> --base-url <URL>${NC}"
+  echo -e "    ${CYAN}./scripts/deploy.sh create-workspace --id ws_my_project --agent-id <UUID> --api-key <KEY> --base-url <URL>${NC}"
   echo ""
 fi
 
@@ -259,11 +282,13 @@ echo ""
 # ── Done ────────────────────────────────────────────────────────────
 echo -e "${GREEN}${BOLD}✔ Agent Toolkit installed successfully!${NC}"
 echo ""
-echo -e "  ${BOLD}Server running at:${NC} ${CYAN}http://localhost:${SERVER_PORT}${NC}"
+echo -e "  ${BOLD}Server running at:${NC}    ${CYAN}http://localhost:${SERVER_PORT}${NC}"
+echo -e "  ${BOLD}Storybook running at:${NC} ${CYAN}http://localhost:${STORYBOOK_PORT:-6006}${NC}"
 echo ""
 echo -e "  ${BOLD}Verify:${NC}"
 echo ""
 echo -e "    ${CYAN}curl http://localhost:${SERVER_PORT}/health/ready${NC}"
+echo -e "    ${CYAN}curl -I http://localhost:${STORYBOOK_PORT:-6006}/${NC}"
 echo ""
 echo -e "  ${BOLD}Manage:${NC}"
 echo ""
