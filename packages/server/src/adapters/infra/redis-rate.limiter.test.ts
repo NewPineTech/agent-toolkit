@@ -1,40 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { RedisRateLimiter } from "./redis-rate.limiter.js";
 
-function createMockRedis(currentCount: number) {
-  const checkPipeline = {
-    zremrangebyscore: vi.fn().mockReturnThis(),
-    zcard: vi.fn().mockReturnThis(),
-    pexpire: vi.fn().mockReturnThis(),
-    exec: vi.fn().mockResolvedValue([
-      [null, 0],
-      [null, currentCount],
-      [null, 1],
-    ]),
-  };
-  const addPipeline = {
-    zadd: vi.fn().mockReturnThis(),
-    pexpire: vi.fn().mockReturnThis(),
-    exec: vi.fn().mockResolvedValue([
-      [null, 1],
-      [null, 1],
-    ]),
-  };
-
-  let callCount = 0;
+function createMockRedis(allowedResult: [number, number]) {
   return {
-    pipeline: vi.fn().mockImplementation(() => {
-      callCount++;
-      return callCount === 1 ? checkPipeline : addPipeline;
-    }),
-    _checkPipeline: checkPipeline,
-    _addPipeline: addPipeline,
+    defineCommand: vi.fn(),
+    rateLimit: vi.fn().mockResolvedValue(allowedResult),
   } as any;
 }
 
 describe("RedisRateLimiter", () => {
   it("allows requests under the limit", async () => {
-    const redis = createMockRedis(3);
+    const redis = createMockRedis([1, 3]);
     const limiter = new RedisRateLimiter(redis);
 
     const result = await limiter.check("user:1", 5, 60_000);
@@ -44,7 +20,7 @@ describe("RedisRateLimiter", () => {
   });
 
   it("blocks requests at the limit", async () => {
-    const redis = createMockRedis(5);
+    const redis = createMockRedis([0, 5]);
     const limiter = new RedisRateLimiter(redis);
 
     const result = await limiter.check("user:1", 5, 60_000);
@@ -54,7 +30,7 @@ describe("RedisRateLimiter", () => {
   });
 
   it("blocks requests over the limit", async () => {
-    const redis = createMockRedis(6);
+    const redis = createMockRedis([0, 6]);
     const limiter = new RedisRateLimiter(redis);
 
     const result = await limiter.check("user:1", 5, 60_000);
@@ -63,45 +39,54 @@ describe("RedisRateLimiter", () => {
     expect(result.retryAfter).toBe(60);
   });
 
-  it("does not add entry when rejected", async () => {
-    const redis = createMockRedis(5);
-    const limiter = new RedisRateLimiter(redis);
-
-    await limiter.check("user:1", 5, 60_000);
-    expect(redis.pipeline).toHaveBeenCalledTimes(1);
-  });
-
   it("uses correct Redis key prefix", async () => {
-    const redis = createMockRedis(1);
+    const redis = createMockRedis([1, 1]);
     const limiter = new RedisRateLimiter(redis);
 
     await limiter.check("chat:ws_1:user_42", 10, 60_000);
 
-    const pipeline = redis._checkPipeline;
-    expect(pipeline.zremrangebyscore).toHaveBeenCalledWith(
+    expect(redis.rateLimit).toHaveBeenCalledWith(
       "rl:chat:ws_1:user_42",
-      "-inf",
       expect.any(Number),
+      expect.any(Number),
+      10,
+      60_000,
+      expect.any(String),
     );
   });
 
-  it("sets sliding window expiry", async () => {
-    const redis = createMockRedis(1);
+  it("passes windowMs for expiry", async () => {
+    const redis = createMockRedis([1, 1]);
     const limiter = new RedisRateLimiter(redis);
 
     await limiter.check("key", 10, 30_000);
 
-    const pipeline = redis._checkPipeline;
-    expect(pipeline.pexpire).toHaveBeenCalledWith("rl:key", 30_000);
+    expect(redis.rateLimit).toHaveBeenCalledWith(
+      "rl:key",
+      expect.any(Number),
+      expect.any(Number),
+      10,
+      30_000,
+      expect.any(String),
+    );
   });
 
-  it("handles null pipeline results gracefully", async () => {
-    const redis = createMockRedis(1);
-    redis._checkPipeline.exec.mockResolvedValue(null);
+  it("defines the rateLimit command on construction", () => {
+    const redis = createMockRedis([1, 0]);
+    new RedisRateLimiter(redis);
+
+    expect(redis.defineCommand).toHaveBeenCalledWith("rateLimit", {
+      numberOfKeys: 1,
+      lua: expect.any(String),
+    });
+  });
+
+  it("calculates correct remaining count", async () => {
+    const redis = createMockRedis([1, 7]);
     const limiter = new RedisRateLimiter(redis);
 
-    const result = await limiter.check("key", 5, 60_000);
+    const result = await limiter.check("key", 10, 60_000);
     expect(result.allowed).toBe(true);
-    expect(result.remaining).toBe(5);
+    expect(result.remaining).toBe(2);
   });
 });

@@ -6,8 +6,35 @@ import type {
 
 const KEY_PREFIX = "rl:";
 
+// Atomic sliding-window rate limit: removes expired entries, checks count,
+// conditionally adds the new member, and sets TTL — all in one round-trip.
+const RATE_LIMIT_SCRIPT = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window_start = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local window_ms = tonumber(ARGV[4])
+local member = ARGV[5]
+
+redis.call('ZREMRANGEBYSCORE', key, '-inf', window_start)
+local count = redis.call('ZCARD', key)
+
+if count >= limit then
+  return {0, count}
+end
+
+redis.call('ZADD', key, now, member)
+redis.call('PEXPIRE', key, window_ms)
+return {1, count}
+`;
+
 export class RedisRateLimiter implements RateLimiter {
-  constructor(private readonly redis: Redis) {}
+  constructor(private readonly redis: Redis) {
+    this.redis.defineCommand("rateLimit", {
+      numberOfKeys: 1,
+      lua: RATE_LIMIT_SCRIPT,
+    });
+  }
 
   async check(
     key: string,
@@ -17,26 +44,25 @@ export class RedisRateLimiter implements RateLimiter {
     const redisKey = `${KEY_PREFIX}${key}`;
     const now = Date.now();
     const windowStart = now - windowMs;
-
     const member = `${now}:${Math.random()}`;
-    const pipeline = this.redis.pipeline();
-    pipeline.zremrangebyscore(redisKey, "-inf", windowStart);
-    pipeline.zcard(redisKey);
-    pipeline.pexpire(redisKey, windowMs);
-
-    const results = await pipeline.exec();
-    if (!results) {
-      return {
-        allowed: true,
-        remaining: limit,
-        resetAt: new Date(now + windowMs),
-      };
-    }
-
-    const currentCount = (results[1]?.[1] as number) ?? 0;
     const resetAt = new Date(now + windowMs);
 
-    if (currentCount >= limit) {
+    const result = await (
+      this.redis as Redis & {
+        rateLimit: (
+          key: string,
+          now: number,
+          windowStart: number,
+          limit: number,
+          windowMs: number,
+          member: string,
+        ) => Promise<[number, number]>;
+      }
+    ).rateLimit(redisKey, now, windowStart, limit, windowMs, member);
+
+    const [allowed, count] = result;
+
+    if (!allowed) {
       return {
         allowed: false,
         remaining: 0,
@@ -45,13 +71,7 @@ export class RedisRateLimiter implements RateLimiter {
       };
     }
 
-    await this.redis
-      .pipeline()
-      .zadd(redisKey, now, member)
-      .pexpire(redisKey, windowMs)
-      .exec();
-
-    const remaining = Math.max(0, limit - currentCount - 1);
+    const remaining = Math.max(0, limit - count - 1);
     return { allowed: true, remaining, resetAt };
   }
 }
