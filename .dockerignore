@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.beads
+.bv
+.ccu
+.claude
+.spikes
+history
+coverage
+*.md
+.env
+.env.*
+docker-compose.override.yml
