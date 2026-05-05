@@ -33,6 +33,22 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 - Redis 7+
 - Python >= 3.11 _(only for `tools/ragflow_kb_generater`)_
 
+### Quick Install (recommended)
+
+Run the one-liner to clone, install dependencies, generate secrets, and start infrastructure automatically:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/NewPineTech/agent-toolkit/main/install.sh | bash
+```
+
+To install into a custom directory:
+
+```bash
+AGENT_TOOLKIT_DIR=my-project curl -fsSL https://raw.githubusercontent.com/NewPineTech/agent-toolkit/main/install.sh | bash
+```
+
+### Manual Setup
+
 ### 1. Clone and install
 
 ```bash
