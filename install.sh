@@ -16,9 +16,32 @@ ok()    { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 fail()  { echo -e "${RED}[FAIL]${NC}  $*"; exit 1; }
 
+prompt_or_default() {
+  local prompt_text="$1" default_val="$2" var_name="$3"
+  local input
+  if [ -n "$default_val" ]; then
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default_val}]: ")" input
+    eval "$var_name=\"${input:-$default_val}\""
+  else
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input
+    while [ -z "$input" ]; do
+      echo -e "${RED}  This field is required.${NC}"
+      read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input
+    done
+    eval "$var_name=\"$input\""
+  fi
+}
+
+generate_secret() {
+  openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 64
+}
+
 # ── Configuration ───────────────────────────────────────────────────
 REPO_URL="https://github.com/NewPineTech/agent-toolkit.git"
 INSTALL_DIR="${AGENT_TOOLKIT_DIR:-agent-toolkit}"
+COMPOSE_FILE="docker-compose.prod.yml"
+ENV_FILE=".env.prod"
+ENV_EXAMPLE=".env.prod.example"
 
 # ── Banner ──────────────────────────────────────────────────────────
 echo ""
@@ -88,43 +111,69 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 ok "Dependencies installed"
 echo ""
 
-# ── Environment file ───────────────────────────────────────────────
-if [ ! -f .env ]; then
-  info "Creating .env from .env.example..."
-  cp .env.example .env
+# ── Server port configuration ──────────────────────────────────────
+echo -e "${BOLD}── Server Configuration ─────────────────────────────${NC}"
+echo ""
+prompt_or_default "Server port" "3000" SERVER_PORT
+echo ""
 
-  JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 64)
-  ENCRYPTION_KEY=$(openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 64)
+# ── Environment file ───────────────────────────────────────────────
+if [ ! -f "$ENV_FILE" ]; then
+  info "Creating $ENV_FILE from $ENV_EXAMPLE..."
+  cp "$ENV_EXAMPLE" "$ENV_FILE"
+
+  # Auto-generate secrets
+  JWT_SECRET=$(generate_secret)
+  ENCRYPTION_KEY=$(generate_secret)
   POSTGRES_PASSWORD=$(openssl rand -base64 24 2>/dev/null || head -c 32 /dev/urandom | base64 | head -c 32)
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s|your-jwt-secret-must-be-at-least-32-characters-long|$JWT_SECRET|" .env
-    sed -i '' "s|CHANGE_ME_generate_with_openssl_rand_hex_32|$ENCRYPTION_KEY|" .env
-    sed -i '' "s|POSTGRES_PASSWORD=dev_password|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" .env
-    sed -i '' "s|dev_password@localhost|$POSTGRES_PASSWORD@localhost|" .env
+    sed -i '' "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" "$ENV_FILE"
+    sed -i '' "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$ENCRYPTION_KEY|" "$ENV_FILE"
+    sed -i '' "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" "$ENV_FILE"
+    sed -i '' "s|^PORT=.*|PORT=$SERVER_PORT|" "$ENV_FILE"
   else
-    sed -i "s|your-jwt-secret-must-be-at-least-32-characters-long|$JWT_SECRET|" .env
-    sed -i "s|CHANGE_ME_generate_with_openssl_rand_hex_32|$ENCRYPTION_KEY|" .env
-    sed -i "s|POSTGRES_PASSWORD=dev_password|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" .env
-    sed -i "s|dev_password@localhost|$POSTGRES_PASSWORD@localhost|" .env
+    sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_SECRET|" "$ENV_FILE"
+    sed -i "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$ENCRYPTION_KEY|" "$ENV_FILE"
+    sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" "$ENV_FILE"
+    sed -i "s|^PORT=.*|PORT=$SERVER_PORT|" "$ENV_FILE"
   fi
 
-  ok "Generated .env with random secrets"
+  ok "Generated $ENV_FILE with random secrets (PORT=$SERVER_PORT)"
 else
-  ok ".env already exists — skipping"
+  ok "$ENV_FILE already exists — skipping secret generation"
+  # Still update port if user changed it
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    sed -i '' "s|^PORT=.*|PORT=$SERVER_PORT|" "$ENV_FILE"
+  else
+    sed -i "s|^PORT=.*|PORT=$SERVER_PORT|" "$ENV_FILE"
+  fi
+  ok "Updated PORT=$SERVER_PORT in $ENV_FILE"
 fi
+echo ""
+
+# ── Load env for docker compose ────────────────────────────────────
+# docker-compose.prod.yml uses ${POSTGRES_PASSWORD:?...} which requires
+# the variable in the shell environment. Docker Compose only auto-loads
+# a file named ".env", not ".env.prod", so we must pass --env-file explicitly.
+COMPOSE="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
+
+# ── Build production image ─────────────────────────────────────────
+info "Building production Docker image..."
+$COMPOSE build server
+ok "Production image built"
 echo ""
 
 # ── Start infrastructure ───────────────────────────────────────────
 info "Starting PostgreSQL and Redis..."
-docker compose up -d postgres redis
+$COMPOSE up -d postgres redis
 ok "Infrastructure is running"
 echo ""
 
 # ── Wait for services ──────────────────────────────────────────────
 info "Waiting for PostgreSQL to be ready..."
 retries=30
-until docker compose exec -T postgres pg_isready -U "${POSTGRES_USER:-agent_toolkit}" &>/dev/null || [ $retries -eq 0 ]; do
+until $COMPOSE exec -T postgres pg_isready -U "${POSTGRES_USER:-agent_toolkit}" &>/dev/null || [ $retries -eq 0 ]; do
   retries=$((retries - 1))
   sleep 1
 done
@@ -136,22 +185,91 @@ fi
 
 # ── Run migrations ─────────────────────────────────────────────────
 info "Running database migrations..."
-(cd packages/server && npx drizzle-kit migrate 2>/dev/null) && ok "Migrations applied" || warn "Migration failed — you can retry with: cd packages/server && npx drizzle-kit migrate"
+$COMPOSE --profile migrate run --rm migrate && ok "Migrations applied" || warn "Migration failed — you can retry with: ./scripts/deploy.sh migrate"
+echo ""
+
+# ── Workspace creation ─────────────────────────────────────────────
+echo -e "${BOLD}── Workspace Setup ─────────────────────────────────${NC}"
+echo ""
+echo -e "  A workspace connects the widget to your RAGFlow agent."
+echo -e "  You need your RAGFlow agent ID, API key, and server URL."
+echo ""
+
+read -rp "$(echo -e "${CYAN}Create a workspace now? (Y/n)${NC}: ")" CREATE_WS
+CREATE_WS="${CREATE_WS:-Y}"
+
+if [[ "$CREATE_WS" =~ ^[Yy]$ ]]; then
+  echo ""
+  prompt_or_default "Workspace ID (e.g. ws_my_project)" "" WS_ID
+  prompt_or_default "RAGFlow agent UUID" "" WS_AGENT_ID
+  prompt_or_default "RAGFlow API key" "" WS_API_KEY
+  prompt_or_default "RAGFlow server URL (e.g. https://ragflow.example.com)" "" WS_BASE_URL
+  prompt_or_default "Allowed domains (comma-separated, or empty for all)" "" WS_DOMAINS
+  prompt_or_default "Auth mode" "anonymous" WS_AUTH_MODE
+  prompt_or_default "Rate limit — max requests per window" "30" WS_MAX_REQUESTS
+  prompt_or_default "Rate limit — window duration (ms)" "60000" WS_WINDOW_MS
+  echo ""
+
+  # Source .env.prod to get POSTGRES_PASSWORD and ENCRYPTION_KEY
+  set -a
+  source "$ENV_FILE"
+  set +a
+
+  DATABASE_URL="postgresql://${POSTGRES_USER:-agent_toolkit}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB:-agent_toolkit}"
+
+  info "Creating workspace..."
+
+  # Run create-workspace inside the server container (has network access to postgres)
+  $COMPOSE run --rm \
+    -e DATABASE_URL="postgresql://${POSTGRES_USER:-agent_toolkit}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_toolkit}" \
+    -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
+    --entrypoint "" \
+    server \
+    node -e "
+      const { execSync } = require('child_process');
+      const args = [
+        '--id', '${WS_ID}',
+        '--agent-id', '${WS_AGENT_ID}',
+        '--api-key', '${WS_API_KEY}',
+        '--base-url', '${WS_BASE_URL}',
+        '--auth-mode', '${WS_AUTH_MODE}',
+        '--max-requests', '${WS_MAX_REQUESTS}',
+        '--window-ms', '${WS_WINDOW_MS}',
+      ];
+      if ('${WS_DOMAINS}'.trim()) args.push('--domains', '${WS_DOMAINS}');
+      execSync(
+        'node --import tsx/esm packages/server/src/db/create-workspace.ts ' + args.join(' '),
+        { stdio: 'inherit', cwd: '/app' }
+      );
+    " && ok "Workspace '${WS_ID}' created successfully" || warn "Workspace creation failed. You can retry manually with: pnpm db:create-workspace"
+  echo ""
+else
+  echo ""
+  info "Skipping workspace creation. You can create one later with:"
+  echo -e "    ${CYAN}pnpm db:create-workspace -- --id ws_my_project --agent-id <UUID> --api-key <KEY> --base-url <URL>${NC}"
+  echo ""
+fi
+
+# ── Start server ───────────────────────────────────────────────────
+info "Starting the full stack..."
+$COMPOSE up -d
+ok "All services started"
 echo ""
 
 # ── Done ────────────────────────────────────────────────────────────
 echo -e "${GREEN}${BOLD}✔ Agent Toolkit installed successfully!${NC}"
 echo ""
-echo -e "  ${BOLD}Next steps:${NC}"
+echo -e "  ${BOLD}Server running at:${NC} ${CYAN}http://localhost:${SERVER_PORT}${NC}"
+echo ""
+echo -e "  ${BOLD}Verify:${NC}"
+echo ""
+echo -e "    ${CYAN}curl http://localhost:${SERVER_PORT}/health/ready${NC}"
+echo ""
+echo -e "  ${BOLD}Manage:${NC}"
 echo ""
 echo -e "    ${CYAN}cd $INSTALL_DIR${NC}"
-echo -e "    ${CYAN}pnpm dev${NC}              # Start the dev server on :3000"
+echo -e "    ${CYAN}./scripts/deploy.sh status${NC}    # Check service health"
+echo -e "    ${CYAN}./scripts/deploy.sh logs${NC}      # Tail server logs"
 echo ""
-echo -e "  ${BOLD}Optional:${NC}"
-echo ""
-echo -e "    Edit ${YELLOW}.env${NC} to configure RAGFlow provider settings"
-echo -e "    ${CYAN}cd packages/server && npx tsx src/db/seed.ts${NC}   # Seed a dev workspace"
-echo -e "    ${CYAN}cd packages/widget && pnpm storybook${NC}           # Launch Storybook"
-echo ""
-echo -e "  ${BOLD}Docs:${NC} https://github.com/NewPineTech/agent-toolkit#readme"
+echo -e "  ${BOLD}Docs:${NC} See DEPLOYMENT.md for production deployment details"
 echo ""
