@@ -29,6 +29,7 @@ export interface EmbedConfig {
   width?: string;
   height?: string;
   initialOpen?: boolean;
+  parentOrigin?: string;
 }
 
 // Must match standalone.tsx sizes exactly
@@ -130,7 +131,9 @@ export function buildEmbedUrl(config: EmbedConfig): string {
   }
 
   const base = getApiUrl();
-  if (typeof window !== "undefined") {
+  if (config.parentOrigin) {
+    params.set("parentOrigin", config.parentOrigin);
+  } else if (typeof window !== "undefined") {
     params.set("parentOrigin", window.location.origin);
   }
   return `${base}/widget/embed?${params.toString()}`;
@@ -168,6 +171,7 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
   if (script?.dataset.workspaceId) {
     const config: EmbedConfig = {
       workspaceId: script.dataset.workspaceId,
+      parentOrigin: script.dataset.parentOrigin,
       title: script.dataset.title,
       subtitle: script.dataset.subtitle,
       placeholder: script.dataset.placeholder,

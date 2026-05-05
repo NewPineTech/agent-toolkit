@@ -8,6 +8,7 @@ import {
 
 interface PlaygroundProps {
   workspaceId: string;
+  parentOrigin: string;
   title: string;
   subtitle: string;
   placeholder: string;
@@ -38,6 +39,7 @@ interface PlaygroundProps {
 function buildConfig(props: PlaygroundProps): EmbedConfig {
   return {
     workspaceId: props.workspaceId,
+    parentOrigin: props.parentOrigin || undefined,
     title: props.title || undefined,
     subtitle: props.subtitle || undefined,
     placeholder: props.placeholder || undefined,
@@ -83,6 +85,7 @@ function EmbedPlayground(props: PlaygroundProps) {
     setSnippet(getEmbedSnippet(config));
   }, [
     props.workspaceId,
+    props.parentOrigin,
     props.title,
     props.subtitle,
     props.placeholder,
@@ -128,6 +131,7 @@ function EmbedPlayground(props: PlaygroundProps) {
     iframeRef.current = iframe;
   }, [
     props.workspaceId,
+    props.parentOrigin,
     props.title,
     props.subtitle,
     props.placeholder,
@@ -371,6 +375,12 @@ const meta = {
       description: "Workspace identifier (required)",
       table: { category: "Core" },
     },
+    parentOrigin: {
+      control: "text",
+      description:
+        "Origin allowed to receive postMessage events from the widget (defaults to current window origin)",
+      table: { category: "Core" },
+    },
     title: {
       control: "text",
       description: "Widget header title (legacy, prefer botName)",
@@ -507,6 +517,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     workspaceId: "ws_dev_001",
+    parentOrigin: "http://localhost:8000",
     title: "",
     subtitle: "",
     placeholder: "",
@@ -539,6 +550,7 @@ export const Default: Story = {
 export const GreenTheme: Story = {
   args: {
     workspaceId: "ws_dev_001",
+    parentOrigin: "",
     title: "HR Assistant",
     subtitle: "Online now",
     placeholder: "Ask about company policies...",
@@ -570,6 +582,7 @@ export const GreenTheme: Story = {
 export const MinimalConfig: Story = {
   args: {
     workspaceId: "ws_dev_001",
+    parentOrigin: "",
     title: "",
     subtitle: "",
     placeholder: "",
