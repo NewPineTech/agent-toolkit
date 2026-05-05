@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { AuthMode } from "@agent-toolkit/types";
 import type { Workspace } from "@agent-toolkit/types";
@@ -234,22 +235,22 @@ export async function widgetRoutes(
           });
         }
       } finally {
+        await Promise.all([
+          cradle.sessionStore.updateLastActive(sessionId),
+          cradle.usageTracker.increment(
+            workspaceId,
+            new Date().toISOString().slice(0, 10),
+          ),
+        ]).catch((err) => {
+          cradle.logger.error("Post-stream bookkeeping failed", {
+            error: err instanceof Error ? err.message : String(err),
+            sessionId,
+            workspaceId,
+          });
+        });
+
         reply.raw.end();
       }
-
-      Promise.all([
-        cradle.sessionStore.updateLastActive(sessionId),
-        cradle.usageTracker.increment(
-          workspaceId,
-          new Date().toISOString().slice(0, 10),
-        ),
-      ]).catch((err) => {
-        cradle.logger.error("Post-stream bookkeeping failed", {
-          error: err instanceof Error ? err.message : String(err),
-          sessionId,
-          workspaceId,
-        });
-      });
     },
   );
 
@@ -311,7 +312,6 @@ async function verifyCustomerToken(
 
   try {
     const secret = cradle.encryptionService.decrypt(workspace.authSecret);
-    const { createHmac, timingSafeEqual } = await import("node:crypto");
 
     const [headerB64, payloadB64, signatureB64] = customerToken.split(".");
     if (!headerB64 || !payloadB64 || !signatureB64) {

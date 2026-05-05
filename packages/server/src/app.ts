@@ -134,7 +134,13 @@ export async function createApp(config: Config) {
   });
 
   await app.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      if (!origin || config.NODE_ENV === "development") {
+        cb(null, true);
+        return;
+      }
+      cb(null, origin);
+    },
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
     exposedHeaders: ["X-Request-Id"],

@@ -117,7 +117,7 @@ export async function embedRoute(app: FastifyInstance) {
       }
 
       const html = renderEmbedPage(origin, params.toString());
-      
+
       return reply
         .status(200)
         .header("Content-Type", "text/html; charset=utf-8")

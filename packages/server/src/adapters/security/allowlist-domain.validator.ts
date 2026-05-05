@@ -13,18 +13,25 @@ export class AllowlistDomainValidator implements DomainValidator {
 
     const normalizedOrigin = origin.toLowerCase().replace(/\/$/, "");
 
+    let parsedOrigin: URL;
+    try {
+      parsedOrigin = new URL(normalizedOrigin);
+    } catch {
+      return false;
+    }
+
     return allowedDomains.some((domain) => {
       const normalizedDomain = domain.toLowerCase().replace(/\/$/, "");
 
       if (normalizedDomain.startsWith("*.")) {
-        const suffix = normalizedDomain.slice(1);
+        const wildcardHost = normalizedDomain.slice(2);
+        const originHost = parsedOrigin.hostname;
         return (
-          normalizedOrigin.endsWith(suffix) ||
-          normalizedOrigin === `https://${normalizedDomain.slice(2)}` ||
-          normalizedOrigin === `http://${normalizedDomain.slice(2)}`
+          originHost === wildcardHost || originHost.endsWith(`.${wildcardHost}`)
         );
       }
 
+      // Exact match requires full origin (scheme + host + port)
       return normalizedOrigin === normalizedDomain;
     });
   }
