@@ -52,12 +52,40 @@ let bundleEtag: string | null = null;
 async function loadStandaloneBundle(): Promise<string> {
   if (standaloneBundle) return standaloneBundle;
 
+  const explicitBundlePath = process.env.WIDGET_STANDALONE_BUNDLE_PATH;
+  if (explicitBundlePath) {
+    standaloneBundle = await readFile(explicitBundlePath, "utf-8");
+    bundleEtag = `"${createHash("sha256").update(standaloneBundle).digest("hex").slice(0, 16)}"`;
+    return standaloneBundle;
+  }
+
+  const packagedBundle = new URL(
+    "../widget/standalone.global.js",
+    import.meta.url,
+  );
+  try {
+    standaloneBundle = await readFile(packagedBundle, "utf-8");
+    bundleEtag = `"${createHash("sha256").update(standaloneBundle).digest("hex").slice(0, 16)}"`;
+    return standaloneBundle;
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error;
+  }
+
   const require = createRequire(import.meta.url);
   const widgetEntry = require.resolve("@agent-toolkit/widget");
   const distDir = dirname(widgetEntry);
   standaloneBundle = await readFile(`${distDir}/standalone.global.js`, "utf-8");
   bundleEtag = `"${createHash("sha256").update(standaloneBundle).digest("hex").slice(0, 16)}"`;
   return standaloneBundle;
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 export async function embedRoute(app: FastifyInstance) {

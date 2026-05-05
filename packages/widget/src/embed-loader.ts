@@ -36,6 +36,14 @@ export interface EmbedConfig {
 const BUBBLE_SIZE = { width: 100, height: 100 };
 const PANEL_SIZE = { width: 440, height: 700 };
 
+function getUrlOrigin(url: string): string {
+  const base =
+    typeof window !== "undefined" && window.location?.href
+      ? window.location.href
+      : "http://localhost";
+  return new URL(url, base).origin;
+}
+
 export function createChatIframe(config: EmbedConfig): HTMLIFrameElement {
   const url = buildEmbedUrl(config);
   const isRight = config.theme?.position !== "bottom-left";
@@ -58,7 +66,7 @@ export function createChatIframe(config: EmbedConfig): HTMLIFrameElement {
   iframe.title = config.title ?? "Chat Widget";
   iframe.setAttribute("allowtransparency", "true");
 
-  const expectedOrigin = new URL(url).origin;
+  const expectedOrigin = getUrlOrigin(url);
 
   const handler = (event: MessageEvent) => {
     if (event.source !== iframe.contentWindow) return;
@@ -94,6 +102,12 @@ export function createChatIframe(config: EmbedConfig): HTMLIFrameElement {
 export function buildEmbedUrl(config: EmbedConfig): string {
   const params = new URLSearchParams();
   params.set("workspaceId", config.workspaceId);
+  const base = getApiUrl();
+  // if (!base) {
+  //   throw new Error(
+  //     "WIDGET_API_URL is not configured. Set it via the WIDGET_API_URL build-time environment variable.",
+  //   );
+  // }
 
   if (config.title) params.set("title", config.title);
   if (config.subtitle) params.set("subtitle", config.subtitle);
@@ -130,7 +144,6 @@ export function buildEmbedUrl(config: EmbedConfig): string {
       params.set("borderRadius", String(config.theme.borderRadius));
   }
 
-  const base = getApiUrl();
   if (config.parentOrigin) {
     params.set("parentOrigin", config.parentOrigin);
   } else if (typeof window !== "undefined") {
@@ -144,7 +157,7 @@ export function getEmbedSnippet(config: EmbedConfig): string {
   const title = config.title ?? "Chat Widget";
   const isRight = config.theme?.position !== "bottom-left";
 
-  const expectedOrigin = new URL(url).origin;
+  const expectedOrigin = getUrlOrigin(url);
 
   return `<!-- Agent Toolkit Chat Widget -->
 <iframe

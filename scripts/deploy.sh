@@ -3,6 +3,7 @@ set -euo pipefail
 
 COMPOSE_FILE="docker-compose.prod.yml"
 ENV_FILE=".env.prod"
+COMPOSE="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
 
 usage() {
   cat <<EOF
@@ -16,7 +17,10 @@ Commands:
   logs        Tail service logs
   restart     Rebuild and restart the server
   status      Show service status and health
-  seed        Run the database seed script
+  seed              Run the database seed script
+  create-workspace  Create (or update) a workspace in the database
+                    Pass all --flag <value> options after the command.
+                    Run with --help for the full option list.
 EOF
   exit 1
 }
@@ -31,37 +35,42 @@ check_env() {
 case "${1:-}" in
   build)
     check_env
-    docker compose -f "$COMPOSE_FILE" build --no-cache server
+    $COMPOSE build --no-cache server
     ;;
   up)
     check_env
-    docker compose -f "$COMPOSE_FILE" up -d
+    $COMPOSE up -d
     echo "Services started. Run '$0 status' to check health."
     ;;
   down)
-    docker compose -f "$COMPOSE_FILE" down
+    $COMPOSE down
     ;;
   migrate)
     check_env
-    docker compose -f "$COMPOSE_FILE" --profile migrate run --rm migrate
+    $COMPOSE run --rm --entrypoint "" server sh -c 'cd /app/packages/server && node dist/db/migrate.js'
     ;;
   logs)
-    docker compose -f "$COMPOSE_FILE" logs -f --tail=100 "${2:-server}"
+    $COMPOSE logs -f --tail=100 "${2:-server}"
     ;;
   restart)
     check_env
-    docker compose -f "$COMPOSE_FILE" up -d --build server
+    $COMPOSE up -d --build server
     ;;
   status)
-    docker compose -f "$COMPOSE_FILE" ps
+    $COMPOSE ps
     echo ""
     echo "Health checks:"
-    docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}"
+    $COMPOSE ps --format "table {{.Name}}\t{{.Status}}"
     ;;
   seed)
     check_env
-    docker compose -f "$COMPOSE_FILE" exec server node -e \
+    $COMPOSE exec server node -e \
       "require('child_process').execSync('npx tsx src/db/seed.ts', {stdio:'inherit', cwd:'/app/packages/server'})"
+    ;;
+  create-workspace)
+    check_env
+    $COMPOSE run --rm --entrypoint "" server \
+      node /app/packages/server/dist/db/create-workspace.js "${@:2}"
     ;;
   *)
     usage

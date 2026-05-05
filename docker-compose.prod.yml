@@ -95,25 +95,36 @@ services:
         max-size: "10m"
         max-file: "5"
 
-  migrate:
+  storybook:
     build:
       context: .
-      dockerfile: Dockerfile
-    image: agent-toolkit-server:${IMAGE_TAG:-latest}
-    command: ["node", "-e", "require('child_process').execSync('npx drizzle-kit migrate', {stdio:'inherit', cwd:'/app/packages/server'})"]
-    env_file:
-      - path: .env.prod
-        required: true
-    environment:
-      NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-agent_toolkit}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_toolkit}
-    depends_on:
-      postgres:
-        condition: service_healthy
+      dockerfile: Dockerfile.storybook
+      args:
+        WIDGET_API_URL: ${WIDGET_API_URL}
+    image: agent-toolkit-storybook:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${STORYBOOK_PORT:-6006}:6006"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6006/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+        reservations:
+          memory: 32M
     networks:
-      - internal
-    profiles:
-      - migrate
+      - web
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:
