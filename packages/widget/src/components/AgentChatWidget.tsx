@@ -1,13 +1,19 @@
-import React, { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react';
-import { X, ArrowRight, Sparkles, RotateCcw, Copy, Check } from 'lucide-react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type KeyboardEvent,
+} from "react";
+import { X, ArrowRight, Sparkles, RotateCcw, Copy, Check } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   useAgentChat,
   type UseAgentChatOptions,
   type Message,
-} from '../hooks/useAgentChat.js';
-import { useTypingEffect } from '../hooks/useTypingEffect.js';
+} from "../hooks/useAgentChat.js";
+import { useTypingEffect } from "../hooks/useTypingEffect.js";
 import {
   resolveTheme,
   createStyles,
@@ -15,7 +21,7 @@ import {
   MARKDOWN_CSS,
   INTERACTIVE_CSS,
   type ChatTheme,
-} from './styles.js';
+} from "./styles.js";
 
 export interface AgentChatWidgetProps extends UseAgentChatOptions {
   theme?: ChatTheme;
@@ -35,8 +41,8 @@ export interface AgentChatWidgetProps extends UseAgentChatOptions {
 
 const BotAvatar = ({
   size = 34,
-  color = '#D4775A',
-  colorLight = '#E8A878',
+  color = "#D4775A",
+  colorLight = "#E8A878",
   children,
 }: {
   size?: number;
@@ -50,10 +56,10 @@ const BotAvatar = ({
         style={{
           width: size,
           height: size,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
           flexShrink: 0,
         }}
       >
@@ -93,11 +99,11 @@ export function AgentChatWidget(props: AgentChatWidgetProps) {
   const {
     theme: themeProp,
     initialOpen = false,
-    placeholder = 'Write a message…',
-    subtitle = "We're here to help",
+    placeholder = "Nhập tin nhắn…",
+    subtitle = "Chúng tôi luôn sẵn sàng hỗ trợ",
     greeting,
     suggestions,
-    botName = 'Assistant',
+    botName = "Trợ lý",
     botAvatar,
     autoScroll = true,
     onToggle,
@@ -109,10 +115,13 @@ export function AgentChatWidget(props: AgentChatWidgetProps) {
 
   const [isOpen, setIsOpen] = useState(initialOpen);
 
-  const toggle = useCallback((next: boolean) => {
-    setIsOpen(next);
-    onToggle?.(next);
-  }, [onToggle]);
+  const toggle = useCallback(
+    (next: boolean) => {
+      setIsOpen(next);
+      onToggle?.(next);
+    },
+    [onToggle],
+  );
   const { messages, sendMessage, isLoading, isReady, resetSession } =
     useAgentChat(hookOptions);
 
@@ -164,13 +173,19 @@ export function AgentChatWidget(props: AgentChatWidgetProps) {
         style={styles.bubble}
         className="rcw-bubble-btn"
         onClick={() => toggle(!isOpen)}
-        aria-label={isOpen ? 'Close chat' : 'Open chat'}
+        aria-label={isOpen ? "Close chat" : "Open chat"}
         aria-expanded={isOpen}
       >
         {isOpen ? (
           <X size={20} strokeWidth={2.2} />
         ) : (
-          <BotAvatar size={40} color={theme.primaryColor} colorLight={theme.primarySoftColor}>{botAvatar}</BotAvatar>
+          <BotAvatar
+            size={40}
+            color={theme.primaryColor}
+            colorLight={theme.primarySoftColor}
+          >
+            {botAvatar}
+          </BotAvatar>
         )}
       </button>
     </div>
@@ -206,7 +221,11 @@ function ChatPanel(props: {
     placeholder,
     subtitle,
     greeting,
-    suggestions = ['I need help getting started', 'How does billing work?', 'I have a question'],
+    suggestions = [
+      "Tôi cần hướng dẫn bắt đầu",
+      "Thanh toán hoạt động như thế nào?",
+      "Tôi có một câu hỏi",
+    ],
     botName,
     botAvatar,
     autoScroll,
@@ -215,19 +234,22 @@ function ChatPanel(props: {
     onReset,
     onClose,
   } = props;
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animatingMsgRef = useRef<string | null>(null);
 
-  const handleAnimatingChange = useCallback((animating: boolean) => {
-    setIsTyping(animating);
-    if (!animating && animatingMsgRef.current) {
-      onMessageAnimated(animatingMsgRef.current);
-      animatingMsgRef.current = null;
-    }
-  }, [onMessageAnimated]);
+  const handleAnimatingChange = useCallback(
+    (animating: boolean) => {
+      setIsTyping(animating);
+      if (!animating && animatingMsgRef.current) {
+        onMessageAnimated(animatingMsgRef.current);
+        animatingMsgRef.current = null;
+      }
+    },
+    [onMessageAnimated],
+  );
 
   const isBusy = isLoading || isTyping;
 
@@ -262,7 +284,7 @@ function ChatPanel(props: {
   const resizeTextarea = useCallback(() => {
     const el = inputRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 20)}px`;
   }, []);
 
@@ -270,17 +292,17 @@ function ChatPanel(props: {
     const msg = (text ?? input).trim();
     if (!msg || isBusy || !isReady) return;
     sendMessage(msg);
-    if (!text) setInput('');
+    if (!text) setInput("");
     requestAnimationFrame(() => {
       if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = "auto";
       }
       inputRef.current?.focus();
     });
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -294,7 +316,13 @@ function ChatPanel(props: {
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerAvatar}>
-          <BotAvatar size={34} color={theme.primaryColor} colorLight={theme.primarySoftColor}>{botAvatar}</BotAvatar>
+          <BotAvatar
+            size={34}
+            color={theme.primaryColor}
+            colorLight={theme.primarySoftColor}
+          >
+            {botAvatar}
+          </BotAvatar>
         </div>
         <div style={styles.headerInfo}>
           <div style={styles.headerTitle}>{botName}</div>
@@ -344,9 +372,9 @@ function ChatPanel(props: {
         ) : (
           <>
             {messages.map((msg, idx) => {
-              if (msg.role === 'assistant' && !msg.content) return null;
+              if (msg.role === "assistant" && !msg.content) return null;
               const isLastAssistant =
-                msg.role === 'assistant' && idx === messages.length - 1;
+                msg.role === "assistant" && idx === messages.length - 1;
               const shouldAnimate = isLastAssistant && !animatedIds.has(msg.id);
               if (shouldAnimate) animatingMsgRef.current = msg.id;
               return (
@@ -357,12 +385,18 @@ function ChatPanel(props: {
                   theme={theme}
                   botAvatar={botAvatar}
                   animate={shouldAnimate}
-                  onAnimatingChange={shouldAnimate ? handleAnimatingChange : undefined}
+                  onAnimatingChange={
+                    shouldAnimate ? handleAnimatingChange : undefined
+                  }
                 />
               );
             })}
-            {isLoading && messages[messages.length - 1]?.content === '' && (
-              <TypingIndicator styles={styles} theme={theme} botAvatar={botAvatar} />
+            {isLoading && messages[messages.length - 1]?.content === "" && (
+              <TypingIndicator
+                styles={styles}
+                theme={theme}
+                botAvatar={botAvatar}
+              />
             )}
           </>
         )}
@@ -388,7 +422,11 @@ function ChatPanel(props: {
           />
           <button
             className="rcw-send-btn"
-            style={hasInput && isReady && !isBusy ? styles.sendButton : styles.sendButtonInactive}
+            style={
+              hasInput && isReady && !isBusy
+                ? styles.sendButton
+                : styles.sendButtonInactive
+            }
             onClick={() => handleSend()}
             disabled={!isReady || isBusy || !hasInput}
             aria-label="Send message"
@@ -410,13 +448,21 @@ function EmptyState(props: {
   botAvatar?: React.ReactNode;
   onSuggestionClick: (text: string) => void;
 }) {
-  const { styles, theme, greeting, suggestions, botName, onSuggestionClick, botAvatar} = props;
+  const {
+    styles,
+    theme,
+    greeting,
+    suggestions,
+    botName,
+    onSuggestionClick,
+    botAvatar,
+  } = props;
 
   if (greeting) {
     return (
-      <div style={{ padding: '4px 0' }}>
+      <div style={{ padding: "4px 0" }}>
         <div style={styles.welcomeTitle}>
-          {greeting.split('\n').map((line, i) => (
+          {greeting.split("\n").map((line, i) => (
             <React.Fragment key={i}>
               {i > 0 && <br />}
               {line}
@@ -428,16 +474,28 @@ function EmptyState(props: {
             <Sparkles size={16} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: theme.textColor }}>
-              Ask {botName} anything
+            <div
+              style={{
+                fontSize: "13px",
+                fontWeight: 600,
+                color: theme.textColor,
+              }}
+            >
+              Hỏi {botName} bất cứ điều gì
             </div>
-            <div style={{ fontSize: '12px', color: theme.textSoftColor, marginTop: '1px' }}>
-              Answers in seconds, not hours
+            <div
+              style={{
+                fontSize: "12px",
+                color: theme.textSoftColor,
+                marginTop: "1px",
+              }}
+            >
+              Phản hồi trong vài giây, không phải hàng giờ
             </div>
           </div>
         </div>
-        <div style={styles.sectionLabel}>Suggestions</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={styles.sectionLabel}>Gợi ý</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {suggestions.map((q) => (
             <button
               key={q}
@@ -455,14 +513,28 @@ function EmptyState(props: {
 
   return (
     <div style={styles.emptyState}>
-      <BotAvatar size={48} color={theme.primaryColor} colorLight={theme.primarySoftColor}>{botAvatar}</BotAvatar>
+      <BotAvatar
+        size={48}
+        color={theme.primaryColor}
+        colorLight={theme.primarySoftColor}
+      >
+        {botAvatar}
+      </BotAvatar>
       <div>
-        <div style={styles.emptyTitle}>How can we help?</div>
+        <div style={styles.emptyTitle}>Chúng tôi có thể giúp gì?</div>
         <div style={styles.emptySubtitle}>
-          Start a conversation below — or pick a question to get things moving.
+          Bắt đầu cuộc trò chuyện bên dưới — hoặc chọn một câu hỏi để khởi động.
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', marginTop: '4px' }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          width: "100%",
+          marginTop: "4px",
+        }}
+      >
         {suggestions.map((q) => (
           <button
             key={q}
@@ -486,27 +558,51 @@ function MessageBubble(props: {
   animate?: boolean;
   onAnimatingChange?: (animating: boolean) => void;
 }) {
-  const { msg, styles, theme, botAvatar, animate = false, onAnimatingChange } = props;
-  const isUser = msg.role === 'user';
+  const {
+    msg,
+    styles,
+    theme,
+    botAvatar,
+    animate = false,
+    onAnimatingChange,
+  } = props;
+  const isUser = msg.role === "user";
 
   return (
     <div
       className="rcw-msg-row"
       style={{
         ...styles.messageRow,
-        justifyContent: isUser ? 'flex-end' : 'flex-start',
+        justifyContent: isUser ? "flex-end" : "flex-start",
       }}
     >
       {!isUser && (
         <div style={styles.avatarSmall}>
-          <BotAvatar size={20} color={theme.primaryColor} colorLight={theme.primarySoftColor}>{botAvatar}</BotAvatar>
+          <BotAvatar
+            size={20}
+            color={theme.primaryColor}
+            colorLight={theme.primarySoftColor}
+          >
+            {botAvatar}
+          </BotAvatar>
         </div>
       )}
-      <div style={isUser ? styles.messageWrapperUser : styles.messageWrapperAssistant}>
-        <div style={isUser ? styles.messageBubbleUser : styles.messageBubbleAssistant}>
-          {msg.role === 'assistant' ? (
+      <div
+        style={
+          isUser ? styles.messageWrapperUser : styles.messageWrapperAssistant
+        }
+      >
+        <div
+          style={
+            isUser ? styles.messageBubbleUser : styles.messageBubbleAssistant
+          }
+        >
+          {msg.role === "assistant" ? (
             animate ? (
-              <AnimatedContent content={msg.content} onAnimatingChange={onAnimatingChange} />
+              <AnimatedContent
+                content={msg.content}
+                onAnimatingChange={onAnimatingChange}
+              />
             ) : (
               <StaticContent content={msg.content} />
             )
@@ -529,10 +625,13 @@ function MessageActions(props: {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    navigator.clipboard.writeText(content).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => {},
+    );
   }, [content]);
 
   return (
@@ -540,38 +639,53 @@ function MessageActions(props: {
       className="rcw-action-bar"
       style={{
         ...styles.actionBar,
-        justifyContent: isUser ? 'flex-end' : 'flex-start',
+        justifyContent: isUser ? "flex-end" : "flex-start",
       }}
     >
       <button
         className="rcw-action-btn"
         style={styles.actionButton}
         onClick={handleCopy}
-        aria-label={copied ? 'Copied' : 'Copy message'}
+        aria-label={copied ? "Copied" : "Copy message"}
       >
-        {copied ? <Check size={13} strokeWidth={2} /> : <Copy size={13} strokeWidth={2} />}
+        {copied ? (
+          <Check size={13} strokeWidth={2} />
+        ) : (
+          <Copy size={13} strokeWidth={2} />
+        )}
       </button>
     </div>
   );
 }
 
 const markdownComponents = {
-  a: (props: React.ComponentPropsWithoutRef<'a'>) => (
+  a: (props: React.ComponentPropsWithoutRef<"a">) => (
     <a {...props} target="_blank" rel="noopener noreferrer" />
   ),
 };
+
+function normalizeMarkdownLinks(content: string): string {
+  return content.replace(
+    /^([ \t]*(?:[-*]|\d+\.)\s+)?(.+?)\s+\((https?:\/\/[^\s)]+)\)\s*$/gm,
+    (_match, listPrefix: string | undefined, text: string, url: string) =>
+      `${listPrefix ?? ""}[${text}](${url})`,
+  );
+}
 
 function StaticContent(props: { content: string }) {
   return (
     <div className="rcw-markdown">
       <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {props.content}
+        {normalizeMarkdownLinks(props.content)}
       </Markdown>
     </div>
   );
 }
 
-function AnimatedContent(props: { content: string; onAnimatingChange?: (animating: boolean) => void }) {
+function AnimatedContent(props: {
+  content: string;
+  onAnimatingChange?: (animating: boolean) => void;
+}) {
   const { text: displayedText, isAnimating } = useTypingEffect(props.content);
 
   useEffect(() => {
@@ -583,7 +697,7 @@ function AnimatedContent(props: { content: string; onAnimatingChange?: (animatin
   return (
     <div className="rcw-markdown">
       <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {displayedText}
+        {normalizeMarkdownLinks(displayedText)}
       </Markdown>
     </div>
   );
@@ -596,9 +710,15 @@ function TypingIndicator(props: {
 }) {
   const { theme, botAvatar } = props;
   return (
-    <div style={{ ...props.styles.messageRow, justifyContent: 'flex-start' }}>
+    <div style={{ ...props.styles.messageRow, justifyContent: "flex-start" }}>
       <div style={props.styles.avatarSmall}>
-        <BotAvatar size={20} color={theme.primaryColor} colorLight={theme.primarySoftColor}>{botAvatar}</BotAvatar>
+        <BotAvatar
+          size={20}
+          color={theme.primaryColor}
+          colorLight={theme.primarySoftColor}
+        >
+          {botAvatar}
+        </BotAvatar>
       </div>
       <div style={props.styles.typingDots} aria-label="Assistant is typing">
         {[0, 1, 2].map((i) => (
@@ -606,10 +726,10 @@ function TypingIndicator(props: {
             key={i}
             style={{
               ...props.styles.dot,
-              animationName: 'rcw-bounce',
-              animationDuration: '1.3s',
-              animationTimingFunction: 'ease-in-out',
-              animationIterationCount: 'infinite',
+              animationName: "rcw-bounce",
+              animationDuration: "1.3s",
+              animationTimingFunction: "ease-in-out",
+              animationIterationCount: "infinite",
               animationDelay: `${i * 0.18}s`,
             }}
           />
@@ -618,4 +738,3 @@ function TypingIndicator(props: {
     </div>
   );
 }
-
