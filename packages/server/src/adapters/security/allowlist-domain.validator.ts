@@ -1,4 +1,4 @@
-import type { DomainValidator } from '../../interfaces/domain-validator.interface.js';
+import type { DomainValidator } from "../../interfaces/domain-validator.interface.js";
 
 export class AllowlistDomainValidator implements DomainValidator {
   constructor(private readonly isDevelopment: boolean = false) {}
@@ -11,12 +11,12 @@ export class AllowlistDomainValidator implements DomainValidator {
     if (!origin) return false;
     if (allowedDomains.length === 0) return false;
 
-    const normalizedOrigin = origin.toLowerCase().replace(/\/$/, '');
+    const normalizedOrigin = origin.toLowerCase().replace(/\/$/, "");
 
     return allowedDomains.some((domain) => {
-      const normalizedDomain = domain.toLowerCase().replace(/\/$/, '');
+      const normalizedDomain = domain.toLowerCase().replace(/\/$/, "");
 
-      if (normalizedDomain.startsWith('*.')) {
+      if (normalizedDomain.startsWith("*.")) {
         const suffix = normalizedDomain.slice(1);
         return (
           normalizedOrigin.endsWith(suffix) ||

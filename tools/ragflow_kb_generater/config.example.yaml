@@ -1,0 +1,112 @@
+# ============================================
+# RAGFlow Ingest Pipeline - Configuration
+# ============================================
+# Copy file này thành config.yaml và điền giá trị thực
+# KHÔNG commit config.yaml vào git (đã có trong .gitignore)
+
+# --- Google Drive ---
+google_drive:
+  # Path tới file JSON service account credentials
+  service_account_json: "./credentials/service-account.json"
+  # ID folder gốc trên Drive (lấy từ URL Drive)
+  # https://drive.google.com/drive/folders/{ID_NAY}
+  root_folder_id: "root-folder-id"
+
+# --- VLM cho OCR PNG (sop_kb) ---
+vlm:
+  provider: "openai" # gemini | openai | claude
+  model: "gpt-4o" # gemini-2.5-flash | gemini-2.5-pro | gpt-4o | claude-sonnet-4-6 | claude-opus-4-6
+  api_key: "sk-proj-..." # API key (không cần nếu provider = claude)
+  # Resize PNG trước khi gửi VLM (giảm chi phí, vẫn đủ resolution OCR)
+  max_image_width: 2048
+  # Số request/giây (rate limit Gemini Flash: ~10 RPM free, 1000 RPM paid)
+  rate_limit_rps: 5
+  # Retry config
+  max_retries: 3
+  retry_backoff_seconds: 5
+  # --- Claude CLI specific (chỉ dùng khi provider = claude) ---
+  # max_turns: 1              # Số turns tối đa cho Claude CLI agent
+  # cli_timeout_seconds: 120  # Timeout cho mỗi lần gọi Claude CLI
+
+# --- LLM cho form metadata generation (forms_kb) ---
+llm:
+  provider: "openai" # openai | gemini | claude
+  model: "gpt-4o-mini" # gpt-4o-mini | gpt-4o | gemini-2.5-flash | claude-sonnet-4-6 | claude-haiku-4-5
+  api_key: "sk-proj-..." # API key (không cần nếu provider = claude)
+  rate_limit_rps: 10
+  max_retries: 3
+  # --- Claude CLI specific (chỉ dùng khi provider = claude) ---
+  # max_turns: 1              # Số turns tối đa cho Claude CLI agent
+  # cli_timeout_seconds: 120  # Timeout cho mỗi lần gọi Claude CLI
+
+# --- RAGFlow ---
+ragflow:
+  # URL của RAGFlow instance (http://localhost:9380 hoặc URL hosted)
+  api_url: "your-ragflow-api-url"
+  api_key: "your-ragflow-api-key"
+  # Embedding model dùng cho cả 4 KB
+  embedding_model: "text-embedding-3-small"
+  # Rerank model dùng cho cả 4 KB
+  rerank_model: ""
+
+# --- KB Configuration ---
+# Mỗi KB có config retrieval riêng (đã align với workflow hr-11)
+knowledge_bases:
+  general_kb:
+    description: "FAQ, chính sách chung, văn hóa công ty"
+    chunking_method: "general"
+    # chunk_separator: "^# "
+    top_k: 32
+    top_n: 2
+    similarity_threshold: 0.45
+    keywords_similarity_weight: 0.3
+
+  documents_kb:
+    description: "Hợp đồng, báo cáo, meeting notes, tài liệu nội bộ chung"
+    chunking_method: "general"
+    chunk_token_num: 1000
+    chunk_overlap: 150
+    top_k: 64
+    top_n: 4
+    similarity_threshold: 0.4
+    keywords_similarity_weight: 0.4
+
+  forms_kb:
+    description: "Catalog biểu mẫu với download link và metadata"
+    chunking_method: "general"
+    # chunk_separator: "^# "
+    top_k: 32
+    top_n: 3
+    similarity_threshold: 0.5
+    keywords_similarity_weight: 0.5 # cao vì user search bằng mã form
+
+  sop_kb:
+    description: "Quy trình SOP, hướng dẫn các bước"
+    chunking_method: "general"
+    # chunk_separator: "^### Bước"
+    top_k: 64
+    top_n: 4
+    similarity_threshold: 0.4
+    keywords_similarity_weight: 0.3
+
+# --- Paths ---
+paths:
+  data_dir: "./data"
+  logs_dir: "./logs"
+  inventory_csv: "./data/inventory.csv"
+  sop_md_dir: "./data/sop_md"
+  forms_md_dir: "./data/forms_md"
+  kb_ids_file: "./data/kb_ids.json"
+
+# --- Filters ---
+# File extensions cho từng KB
+file_filters:
+  sop_kb:
+    extensions: ["png"]
+    name_patterns: ["QT *", "Quy trinh*"]
+  forms_kb:
+    extensions: ["doc", "docx", "xls", "xlsx"]
+    name_patterns: ["*-BM*", "*BM-*"]
+  exclude:
+    extensions: ["vsdx", "DS_Store"]
+    names: [".DS_Store", "MỤC LỤC", "HƯỚNG DẪN"]

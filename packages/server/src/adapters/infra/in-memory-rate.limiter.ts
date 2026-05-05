@@ -1,7 +1,7 @@
 import type {
   RateLimiter,
   RateLimitResult,
-} from '../../interfaces/rate-limiter.interface.js';
+} from "../../interfaces/rate-limiter.interface.js";
 
 interface WindowEntry {
   timestamps: number[];

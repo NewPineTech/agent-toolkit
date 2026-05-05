@@ -1,7 +1,7 @@
-import type { Redis } from 'ioredis';
-import type { Workspace } from '@agent-toolkit/types';
+import type { Redis } from "ioredis";
+import type { Workspace } from "@agent-toolkit/types";
 
-const KEY_PREFIX = 'ws:';
+const KEY_PREFIX = "ws:";
 const DEFAULT_TTL_SECONDS = 300;
 
 export class RedisWorkspaceCache {
@@ -17,8 +17,8 @@ export class RedisWorkspaceCache {
     const parsed = JSON.parse(data) as Record<string, unknown>;
     return {
       ...parsed,
-      createdAt: new Date(parsed['createdAt'] as string),
-      updatedAt: new Date(parsed['updatedAt'] as string),
+      createdAt: new Date(parsed["createdAt"] as string),
+      updatedAt: new Date(parsed["updatedAt"] as string),
     } as Workspace;
   }
 
@@ -31,7 +31,7 @@ export class RedisWorkspaceCache {
     await this.redis.set(
       `${KEY_PREFIX}${workspace.id}`,
       data,
-      'EX',
+      "EX",
       this.ttlSeconds,
     );
   }

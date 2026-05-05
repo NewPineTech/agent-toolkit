@@ -2,15 +2,15 @@
 
 ## Gap Analysis
 
-| Component | Have | Need | Gap |
-|-----------|------|------|-----|
-| Typewriter hook | `useTypingEffect` — 2 chars/18ms | 1 char/20-30ms per spec | Timing adjustment only |
-| Input blocking | `isBusy = isStreaming \|\| isTyping` | Same | None |
-| Widget integration | `MessageContent` → `useTypingEffect` → `onAnimatingChange` | Same | None |
-| Always-on behavior | Yes — every assistant message animated | Same | None |
-| Abort/cleanup | `setInterval` cleanup in effect return | Same | None |
-| Widget tests | None (Vitest configured, 0 test files) | Tests for typewriter + hook | New tests needed |
-| Configurability | Hardcoded defaults in hook | Expose via widget props (optional) | Nice-to-have |
+| Component          | Have                                                       | Need                               | Gap                    |
+| ------------------ | ---------------------------------------------------------- | ---------------------------------- | ---------------------- |
+| Typewriter hook    | `useTypingEffect` — 2 chars/18ms                           | 1 char/20-30ms per spec            | Timing adjustment only |
+| Input blocking     | `isBusy = isStreaming \|\| isTyping`                       | Same                               | None                   |
+| Widget integration | `MessageContent` → `useTypingEffect` → `onAnimatingChange` | Same                               | None                   |
+| Always-on behavior | Yes — every assistant message animated                     | Same                               | None                   |
+| Abort/cleanup      | `setInterval` cleanup in effect return                     | Same                               | None                   |
+| Widget tests       | None (Vitest configured, 0 test files)                     | Tests for typewriter + hook        | New tests needed       |
+| Configurability    | Hardcoded defaults in hook                                 | Expose via widget props (optional) | Nice-to-have           |
 
 ## Recommended Approach
 
@@ -27,10 +27,10 @@
 
 ## Risk Map
 
-| Component | Risk | Reason | Verification |
-|-----------|------|--------|--------------|
-| Timing adjustment | LOW | Single constant change, no logic change | Manual test |
-| useTypingEffect tests | LOW | Pure hook, deterministic timer logic | Unit test with fake timers |
+| Component                | Risk   | Reason                                            | Verification                                         |
+| ------------------------ | ------ | ------------------------------------------------- | ---------------------------------------------------- |
+| Timing adjustment        | LOW    | Single constant change, no logic change           | Manual test                                          |
+| useTypingEffect tests    | LOW    | Pure hook, deterministic timer logic              | Unit test with fake timers                           |
 | Widget integration tests | MEDIUM | React 19, no existing test patterns in widget pkg | Need to set up test infrastructure (jsdom/happy-dom) |
 
 ## Decision

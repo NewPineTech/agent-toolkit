@@ -1,8 +1,8 @@
-import { eq, and } from 'drizzle-orm';
-import type { Session } from '@agent-toolkit/types';
-import type { SessionStore } from '../../interfaces/session-store.interface.js';
-import type { Database } from '../../db/index.js';
-import { sessions } from '../../db/schema.js';
+import { eq, and } from "drizzle-orm";
+import type { Session } from "@agent-toolkit/types";
+import type { SessionStore } from "../../interfaces/session-store.interface.js";
+import type { Database } from "../../db/index.js";
+import { sessions } from "../../db/schema.js";
 
 export class PostgresSessionStore implements SessionStore {
   constructor(private readonly db: Database) {}

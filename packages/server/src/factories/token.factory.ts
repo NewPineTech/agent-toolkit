@@ -1,4 +1,7 @@
-import type { TokenService, TokenPayload } from '../interfaces/token-service.interface.js';
+import type {
+  TokenService,
+  TokenPayload,
+} from "../interfaces/token-service.interface.js";
 
 export class TokenFactory {
   constructor(private readonly tokenService: TokenService) {}

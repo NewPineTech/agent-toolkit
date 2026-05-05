@@ -1,4 +1,4 @@
-import type { Logger, LogContext } from '../../interfaces/logger.interface.js';
+import type { Logger, LogContext } from "../../interfaces/logger.interface.js";
 
 interface PinoLike {
   info(obj: object, msg: string): void;

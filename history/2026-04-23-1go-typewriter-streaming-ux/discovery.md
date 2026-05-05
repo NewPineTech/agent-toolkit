@@ -22,13 +22,13 @@
 
 ### Current Parameters vs. Spec
 
-| Parameter | Current | Spec (from discussion) | Gap |
-|-----------|---------|----------------------|-----|
-| charsPerTick | 2 | 1 | Adjust |
-| intervalMs | 18 | 20-30 | Adjust |
-| Effective ms/char | 9 | 20-30 | ~2-3x faster than spec |
-| Always-on | Yes | Yes | Match |
-| Input blocking | Yes (via isTyping) | Yes | Match |
+| Parameter         | Current            | Spec (from discussion) | Gap                    |
+| ----------------- | ------------------ | ---------------------- | ---------------------- |
+| charsPerTick      | 2                  | 1                      | Adjust                 |
+| intervalMs        | 18                 | 20-30                  | Adjust                 |
+| Effective ms/char | 9                  | 20-30                  | ~2-3x faster than spec |
+| Always-on         | Yes                | Yes                    | Match                  |
+| Input blocking    | Yes (via isTyping) | Yes                    | Match                  |
 
 ## Technical Constraints
 

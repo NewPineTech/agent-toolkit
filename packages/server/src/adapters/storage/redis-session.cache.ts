@@ -1,8 +1,8 @@
-import type { Redis } from 'ioredis';
-import type { Session } from '@agent-toolkit/types';
-import type { SessionCache } from '../../interfaces/session-cache.interface.js';
+import type { Redis } from "ioredis";
+import type { Session } from "@agent-toolkit/types";
+import type { SessionCache } from "../../interfaces/session-cache.interface.js";
 
-const KEY_PREFIX = 'session:';
+const KEY_PREFIX = "session:";
 
 export class RedisSessionCache implements SessionCache {
   constructor(private readonly redis: Redis) {}
@@ -14,9 +14,9 @@ export class RedisSessionCache implements SessionCache {
     const parsed = JSON.parse(data) as Record<string, unknown>;
     return {
       ...parsed,
-      createdAt: new Date(parsed['createdAt'] as string),
-      lastActiveAt: new Date(parsed['lastActiveAt'] as string),
-      expiresAt: new Date(parsed['expiresAt'] as string),
+      createdAt: new Date(parsed["createdAt"] as string),
+      lastActiveAt: new Date(parsed["lastActiveAt"] as string),
+      expiresAt: new Date(parsed["expiresAt"] as string),
     } as Session;
   }
 
@@ -27,7 +27,7 @@ export class RedisSessionCache implements SessionCache {
       lastActiveAt: session.lastActiveAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
     });
-    await this.redis.set(`${KEY_PREFIX}${session.id}`, data, 'EX', ttlSeconds);
+    await this.redis.set(`${KEY_PREFIX}${session.id}`, data, "EX", ttlSeconds);
   }
 
   async delete(sessionId: string): Promise<void> {

@@ -1,11 +1,8 @@
-const DEFAULT_API_URL = 'http://localhost:3000';
+declare const process: { env: Record<string, string | undefined> } | undefined;
 
-let configuredApiUrl: string | undefined;
-
-export function configureWidget(options: { apiUrl: string }) {
-  configuredApiUrl = options.apiUrl.replace(/\/$/, '');
-}
+const API_URL: string =
+  (typeof process !== "undefined" && process?.env?.WIDGET_API_URL) || "";
 
 export function getApiUrl(): string {
-  return configuredApiUrl ?? DEFAULT_API_URL;
+  return API_URL;
 }

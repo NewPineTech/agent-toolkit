@@ -1,4 +1,4 @@
-import type { Session } from '@agent-toolkit/types';
+import type { Session } from "@agent-toolkit/types";
 
 export interface SessionCache {
   /** Get a cached session. Returns null on cache miss. */

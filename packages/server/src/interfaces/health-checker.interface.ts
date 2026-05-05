@@ -1,7 +1,7 @@
-import type { ComponentHealth } from '@agent-toolkit/types';
+import type { ComponentHealth } from "@agent-toolkit/types";
 
 export interface HealthStatus {
-  status: 'healthy' | 'unhealthy';
+  status: "healthy" | "unhealthy";
   components: Record<string, ComponentHealth>;
 }
 

@@ -11,11 +11,17 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 
 ## Packages
 
-| Package | Description |
-|---|---|
+| Package                 | Description                                                          |
+| ----------------------- | -------------------------------------------------------------------- |
 | `@agent-toolkit/server` | Fastify backend — session management, auth, rate limiting, SSE proxy |
-| `@agent-toolkit/widget` | React hook + drop-in chat component |
-| `@agent-toolkit/types` | Shared TypeScript types, enums, and DTOs |
+| `@agent-toolkit/widget` | React hook + drop-in chat component                                  |
+| `@agent-toolkit/types`  | Shared TypeScript types, enums, and DTOs                             |
+
+### Tools
+
+| Tool                   | Language | Description                                                                                                                                                                      |
+| ---------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ragflow_kb_generater` | Python   | Ingest pipeline — crawls Google Drive HR documents, OCRs flowcharts via VLM, generates form metadata cards via LLM, and uploads structured Markdown into RAGFlow knowledge bases |
 
 ## Quick Start
 
@@ -25,6 +31,7 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 - pnpm >= 9
 - PostgreSQL 15+
 - Redis 7+
+- Python >= 3.11 _(only for `tools/ragflow_kb_generater`)_
 
 ### 1. Clone and install
 
@@ -48,24 +55,24 @@ cp .env.example .env
 
 Required variables:
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
-| `JWT_SECRET` | HMAC secret for session tokens (min 32 chars) |
-| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (64-char hex) |
+| Variable         | Description                                                 |
+| ---------------- | ----------------------------------------------------------- |
+| `DATABASE_URL`   | PostgreSQL connection string                                |
+| `REDIS_URL`      | Redis connection string                                     |
+| `JWT_SECRET`     | HMAC secret for session tokens (min 32 chars)               |
+| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (min 32 chars) |
 
 Optional variables (with defaults):
 
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3000` | Server port |
-| `HOST` | `0.0.0.0` | Bind address |
-| `LOG_LEVEL` | `info` | `fatal` `error` `warn` `info` `debug` `trace` |
-| `SESSION_TTL_MINUTES` | `30` | Widget session lifetime |
-| `CORS_MAX_AGE` | `86400` | CORS preflight cache (seconds) |
-| `SHUTDOWN_TIMEOUT_MS` | `30000` | Graceful shutdown timeout |
-| `NODE_ENV` | `development` | `development` `production` `test` |
+| Variable              | Default       | Description                                   |
+| --------------------- | ------------- | --------------------------------------------- |
+| `PORT`                | `3000`        | Server port                                   |
+| `HOST`                | `0.0.0.0`     | Bind address                                  |
+| `LOG_LEVEL`           | `info`        | `fatal` `error` `warn` `info` `debug` `trace` |
+| `SESSION_TTL_MINUTES` | `30`          | Widget session lifetime                       |
+| `CORS_MAX_AGE`        | `86400`       | CORS preflight cache (seconds)                |
+| `SHUTDOWN_TIMEOUT_MS` | `30000`       | Graceful shutdown timeout                     |
+| `NODE_ENV`            | `development` | `development` `production` `test`             |
 
 ### 4. Run the server
 
@@ -80,20 +87,20 @@ npm install @agent-toolkit/widget
 ```
 
 ```tsx
-import { configureWidget, AgentChatWidget } from '@agent-toolkit/widget';
-
-// Set once at app startup — all widget instances use this URL
-configureWidget({ apiUrl: 'https://api.yourdomain.com' });
+import { AgentChatWidget } from "@agent-toolkit/widget";
 
 function App() {
   return (
     <AgentChatWidget
       workspaceId="ws_abc123"
-      theme={{ primaryColor: '#6366f1', position: 'bottom-right' }}
+      botName="Assistant"
+      theme={{ primaryColor: "#D4775A", position: "bottom-right" }}
     />
   );
 }
 ```
+
+> **Note:** The widget resolves its backend URL from the `WIDGET_API_URL` environment variable at build time. Set it in your bundler config (e.g., Vite `define`, webpack `DefinePlugin`) or `.env` file.
 
 ### 6. Embed via iframe (no React required)
 
@@ -102,7 +109,8 @@ function App() {
 ```html
 <iframe
   src="https://api.yourdomain.com/widget/embed?workspaceId=ws_abc123"
-  width="400" height="600"
+  width="400"
+  height="600"
   style="border:none;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"
   title="Chat Widget"
 ></iframe>
@@ -114,8 +122,7 @@ function App() {
 <script
   src="https://cdn.yourdomain.com/embed.global.js"
   data-workspace-id="ws_abc123"
-  data-api-url="https://api.yourdomain.com"
-  data-primary-color="#6366f1"
+  data-primary-color="#D4775A"
   data-width="400px"
   data-height="600px"
 ></script>
@@ -124,52 +131,50 @@ function App() {
 **Option C — Programmatic:**
 
 ```ts
-import { createChatIframe } from '@agent-toolkit/widget/embed';
+import { createChatIframe } from "@agent-toolkit/widget/embed";
 
 const iframe = createChatIframe({
-  workspaceId: 'ws_abc123',
-  apiUrl: 'https://api.yourdomain.com',
-  theme: { primaryColor: '#6366f1' },
+  workspaceId: "ws_abc123",
+  theme: { primaryColor: "#D4775A" },
 });
-document.getElementById('chat-container').appendChild(iframe);
+document.getElementById("chat-container").appendChild(iframe);
 ```
 
 **Option D — Get HTML snippet:**
 
 ```ts
-import { getEmbedSnippet } from '@agent-toolkit/widget/embed';
+import { getEmbedSnippet } from "@agent-toolkit/widget/embed";
 
 const html = getEmbedSnippet({
-  workspaceId: 'ws_abc123',
-  apiUrl: 'https://api.yourdomain.com',
+  workspaceId: "ws_abc123",
 });
 // Returns: <iframe src="..." width="400px" height="600px" ...></iframe>
 ```
 
 #### Embed query parameters
 
-| Parameter | Description |
-|---|---|
-| `workspaceId` | *Required*. Public workspace identifier |
-| `apiUrl` | Backend URL (defaults to same origin) |
-| `primaryColor` | Theme primary color (hex) |
-| `backgroundColor` | Theme background color (hex) |
-| `textColor` | Theme text color (hex) |
-| `title` | Bot name displayed in header |
-| `subtitle` | Header subtitle text |
-| `placeholder` | Input placeholder text |
-| `greeting` | Welcome greeting text |
-| `suggestions` | Comma-separated suggestion strings |
+| Parameter         | Description                             |
+| ----------------- | --------------------------------------- |
+| `workspaceId`     | _Required_. Public workspace identifier |
+| `primaryColor`    | Theme primary color (hex)               |
+| `backgroundColor` | Theme background color (hex)            |
+| `textColor`       | Theme text color (hex)                  |
+| `title`           | Bot name displayed in header            |
+| `subtitle`        | Header subtitle text                    |
+| `placeholder`     | Input placeholder text                  |
+| `greeting`        | Welcome greeting text                   |
+| `suggestions`     | Comma-separated suggestion strings      |
 
 Or use the headless hook for full UI control:
 
 ```tsx
-import { useAgentChat } from '@agent-toolkit/widget/hook';
+import { useAgentChat } from "@agent-toolkit/widget/hook";
 
 function CustomChat() {
-  const { messages, sendMessage, isLoading, isReady } = useAgentChat({
-    workspaceId: 'ws_abc123',
-  });
+  const { messages, sendMessage, isLoading, isReady, resetSession, error } =
+    useAgentChat({
+      workspaceId: "ws_abc123",
+    });
 
   return (
     <div>
@@ -178,12 +183,12 @@ function CustomChat() {
       ))}
       <input
         onKeyDown={(e) => {
-          if (e.key === 'Enter') {
+          if (e.key === "Enter") {
             sendMessage(e.currentTarget.value);
-            e.currentTarget.value = '';
+            e.currentTarget.value = "";
           }
         }}
-        disabled={!isReady || isStreaming}
+        disabled={!isReady || isLoading}
       />
     </div>
   );
@@ -219,6 +224,15 @@ agent-toolkit/
 │   │   └── .storybook/              # Storybook configuration
 │   └── types/                       # @agent-toolkit/types
 │       └── src/                     # Shared enums, domain models, API DTOs, SSE events
+├── tools/
+│   └── ragflow_kb_generater/        # Python ingest pipeline (standalone)
+│       ├── config.example.yaml      # Template — copy to config.yaml
+│       ├── requirements.txt
+│       ├── run_all.sh               # End-to-end runner (--test / --full)
+│       ├── prompts/                 # VLM & LLM prompt templates
+│       ├── scripts/                 # step1..step6 pipeline scripts + common.py
+│       ├── data/                    # Generated output (CSV, Markdown, PDF)
+│       └── logs/                    # Per-step log files
 ├── docker-compose.yml               # Postgres + Redis + server (dev stack)
 ├── Dockerfile                       # Multi-stage production build
 └── pnpm-workspace.yaml              # Monorepo workspace config
@@ -352,6 +366,7 @@ If the timeout is exceeded, the process force-exits with code 1. This ensures sa
 Create a chat session and receive a JWT.
 
 **Request:**
+
 ```json
 { "workspaceId": "ws_abc123" }
 ```
@@ -359,6 +374,7 @@ Create a chat session and receive a JWT.
 **Headers:** `Origin` (checked against domain allowlist for anonymous mode)
 
 **Response:**
+
 ```json
 {
   "token": "eyJhbG...",
@@ -374,11 +390,13 @@ Send a message and receive a streaming response.
 **Headers:** `Authorization: Bearer <session-token>`
 
 **Request:**
+
 ```json
 { "message": "What is RAGFlow?", "sessionId": "sess_xYz..." }
 ```
 
 **Response:** `text/event-stream`
+
 ```
 data: {"type":"token","content":"RAGFlow"}
 data: {"type":"token","content":" is a"}
@@ -389,12 +407,12 @@ data: {"type":"done","sessionId":"...","providerSessionId":"..."}
 
 The chat stream emits newline-delimited `data:` frames. Each frame is a JSON object with a `type` discriminator:
 
-| Type | Fields | Description |
-|---|---|---|
-| `token` | `content: string` | An incremental text chunk from the assistant |
-| `done` | `sessionId`, `providerSessionId` | Stream completed successfully |
-| `error` | `code: string`, `message: string` | Stream-level error (e.g. provider failure) |
-| `metadata` | `data: Record<string, unknown>` | Optional provider metadata |
+| Type       | Fields                            | Description                                  |
+| ---------- | --------------------------------- | -------------------------------------------- |
+| `token`    | `content: string`                 | An incremental text chunk from the assistant |
+| `done`     | `sessionId`, `providerSessionId`  | Stream completed successfully                |
+| `error`    | `code: string`, `message: string` | Stream-level error (e.g. provider failure)   |
+| `metadata` | `data: Record<string, unknown>`   | Optional provider metadata                   |
 
 #### Error Responses
 
@@ -410,20 +428,20 @@ All error responses follow a consistent envelope:
 }
 ```
 
-| Code | HTTP | Cause |
-|---|---|---|
-| `INVALID_WORKSPACE` | 404 | `workspaceId` not found in database |
-| `DOMAIN_NOT_ALLOWED` | 403 | Request `Origin` not in workspace's allowlist |
-| `INVALID_TOKEN` | 401 | Missing, malformed, or expired Bearer token |
-| `INVALID_AUTH` | 401 | Customer JWT signature verification failed |
-| `RATE_LIMITED` | 429 | Workspace + IP exceeded `rateLimitConfig` (includes `Retry-After` header) |
-| `MESSAGE_TOO_LONG` | 400 | Message exceeds workspace's `maxMessageLength` |
-| `SESSION_NOT_FOUND` | 404 | Session ID not found in store or cache |
-| `SESSION_EXPIRED` | 401 | Session past its `expiresAt` timestamp |
-| `PROVIDER_ERROR` | 502 | Upstream RAGFlow returned a non-200 response |
-| `STREAM_ERROR` | — | SSE-only: stream interrupted mid-response |
-| `VALIDATION_ERROR` | 400 | Request body failed JSON Schema validation |
-| `INTERNAL_ERROR` | 500 | Unhandled server error (details logged, not exposed) |
+| Code                 | HTTP | Cause                                                                     |
+| -------------------- | ---- | ------------------------------------------------------------------------- |
+| `INVALID_WORKSPACE`  | 404  | `workspaceId` not found in database                                       |
+| `DOMAIN_NOT_ALLOWED` | 403  | Request `Origin` not in workspace's allowlist                             |
+| `INVALID_TOKEN`      | 401  | Missing, malformed, or expired Bearer token                               |
+| `INVALID_AUTH`       | 401  | Customer JWT signature verification failed                                |
+| `RATE_LIMITED`       | 429  | Workspace + IP exceeded `rateLimitConfig` (includes `Retry-After` header) |
+| `MESSAGE_TOO_LONG`   | 400  | Message exceeds workspace's `maxMessageLength`                            |
+| `SESSION_NOT_FOUND`  | 404  | Session ID not found in store or cache                                    |
+| `SESSION_EXPIRED`    | 401  | Session past its `expiresAt` timestamp                                    |
+| `PROVIDER_ERROR`     | 502  | Upstream RAGFlow returned a non-200 response                              |
+| `STREAM_ERROR`       | —    | SSE-only: stream interrupted mid-response                                 |
+| `VALIDATION_ERROR`   | 400  | Request body failed JSON Schema validation                                |
+| `INTERNAL_ERROR`     | 500  | Unhandled server error (details logged, not exposed)                      |
 
 ### `GET /health/live`
 
@@ -541,7 +559,7 @@ cd packages/widget && pnpm storybook
 
 ## Testing
 
-124 tests across 19 files.
+142 tests across 21 files.
 
 ```bash
 # Unit tests only (adapters + factories)
@@ -551,54 +569,124 @@ pnpm --filter @agent-toolkit/server run test
 cd packages/server && npx vitest run --coverage
 ```
 
-| Area | Files | Tests | Coverage |
-|---|---|---|---|
-| Security adapters | 3 | 26 | 100% |
-| Infra adapters | 5 | 28 | 100% |
-| Storage adapters | 4 | 19 | 100% |
-| Chat adapter | 1 | 10 | 90% |
-| Factories | 5 | 29 | 97% |
-| Integration (routes) | 1 | 12 | — |
+| Area                 | Files | Tests | Coverage |
+| -------------------- | ----- | ----- | -------- |
+| Security adapters    | 3     | 26    | 100%     |
+| Infra adapters       | 5     | 28    | 100%     |
+| Storage adapters     | 4     | 19    | 100%     |
+| Chat adapter         | 1     | 10    | 90%      |
+| Factories            | 5     | 29    | 97%      |
+| Integration (routes) | 1     | 12    | —        |
+
+## Knowledge Base Ingest Pipeline
+
+The `tools/ragflow_kb_generater` is a standalone Python pipeline that populates RAGFlow knowledge bases with HR documents from Google Drive. It runs independently of the Node.js packages — no cross-dependency.
+
+### Pipeline Steps
+
+```
+Google Drive (HR folder)
+  │
+  ▼
+Step 1 ─ Inventory    Crawl folder tree → inventory.csv (~400 files)
+  │
+  ├──► Step 2 ─ OCR SOP       PNG flowcharts → Markdown via VLM (Gemini / GPT-4o / Claude)
+  │
+  ├──► Step 3 ─ Form Cards    .doc/.xls templates → metadata Markdown via LLM (GPT-4o-mini)
+  │
+  └──► Step 3.5 ─ MD→PDF      (optional) Convert Markdown to PDF via WeasyPrint
+  │
+  ▼
+Step 4 ─ Create KBs   Provision 4 empty KBs in RAGFlow (general, documents, forms, sop)
+  │
+  ▼
+Step 5 ─ Upload        Push .md or .pdf files into RAGFlow KBs
+  │
+  ▼
+Step 6 ─ Test          Smoke-test retrieval queries against each KB
+```
+
+### 4 Knowledge Bases
+
+| KB             | Content                   | Chunking             | Status      |
+| -------------- | ------------------------- | -------------------- | ----------- |
+| `sop_kb`       | ~70 OCR'd SOP flowcharts  | Manual (`^## =====`) | Active      |
+| `forms_kb`     | ~300 form metadata cards  | Manual (`^# `)       | Active      |
+| `general_kb`   | FAQ, company culture      | Manual               | Placeholder |
+| `documents_kb` | Contracts, reports, notes | Naive (1000 tokens)  | Placeholder |
+
+### Quick Start (Ingest)
+
+```bash
+cd tools/ragflow_kb_generater
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+cp config.example.yaml config.yaml   # fill in API keys
+
+./run_all.sh --test    # dry run with 5 files per step
+./run_all.sh           # full pipeline (interactive checkpoints before upload)
+```
+
+**Prerequisites:** Python 3.11+, Google Cloud service account with Drive API enabled, and API keys for VLM/LLM providers configured in `config.yaml`. See `tools/ragflow_kb_generater/README.md` for detailed setup.
 
 ## Widget Props
 
 ### `<AgentChatWidget />`
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `workspaceId` | `string` | *required* | Public workspace identifier |
-| `user` | `{ id, name?, email? }` | — | User info for authenticated mode |
-| `theme` | `ChatTheme` | — | Visual customization |
-| `initialOpen` | `boolean` | `false` | Start with panel open |
-| `placeholder` | `string` | `Type a message...` | Input placeholder |
-| `title` | `string` | `Chat` | Panel header text |
-| `onError` | `(error: Error) => void` | — | Error callback |
+| Prop          | Type                        | Default                          | Description                                                  |
+| ------------- | --------------------------- | -------------------------------- | ------------------------------------------------------------ |
+| `workspaceId` | `string`                    | _required_                       | Public workspace identifier                                  |
+| `user`        | `{ id, name?, email? }`     | —                                | User info for authenticated mode                             |
+| `theme`       | `ChatTheme`                 | —                                | Visual customization                                         |
+| `initialOpen` | `boolean`                   | `false`                          | Start with panel open                                        |
+| `placeholder` | `string`                    | `Nhập tin nhắn…`                 | Input placeholder                                            |
+| `botName`     | `string`                    | `Trợ lý`                         | Bot name displayed in header                                 |
+| `subtitle`    | `string`                    | `Chúng tôi luôn sẵn sàng hỗ trợ` | Header subtitle text                                         |
+| `greeting`    | `string`                    | —                                | Welcome greeting (enables rich empty state with suggestions) |
+| `suggestions` | `string[]`                  | _(built-in Vietnamese prompts)_  | Quick-start suggestion buttons                               |
+| `botAvatar`   | `React.ReactNode`           | _(built-in sun-burst SVG)_       | Custom avatar element (SVG, image, icon)                     |
+| `autoScroll`  | `boolean`                   | `true`                           | Auto-scroll to bottom while assistant is typing              |
+| `onToggle`    | `(isOpen: boolean) => void` | —                                | Called when the chat panel is opened or closed               |
+| `onError`     | `(error: Error) => void`    | —                                | Error callback                                               |
 
 ### `ChatTheme`
 
-| Property | Type | Default |
-|---|---|---|
-| `primaryColor` | `string` | `#6366f1` |
-| `backgroundColor` | `string` | `#ffffff` |
-| `textColor` | `string` | `#1f2937` |
-| `fontFamily` | `string` | System fonts |
-| `borderRadius` | `string` | `12px` |
-| `position` | `bottom-right` \| `bottom-left` | `bottom-right` |
+| Property            | Type                            | Default                            |
+| ------------------- | ------------------------------- | ---------------------------------- |
+| `primaryColor`      | `string`                        | `#D4775A`                          |
+| `primaryDeepColor`  | `string`                        | `#8C4A34`                          |
+| `primarySoftColor`  | `string`                        | `#FFF0E8`                          |
+| `backgroundColor`   | `string`                        | `#FFF8EE`                          |
+| `surfaceColor`      | `string`                        | `#FFFDF8`                          |
+| `textColor`         | `string`                        | `#1E1B16`                          |
+| `textSoftColor`     | `string`                        | `#6E6557`                          |
+| `textMuteColor`     | `string`                        | `#A89C88`                          |
+| `borderColor`       | `string`                        | `#EFE6D4`                          |
+| `borderSoftColor`   | `string`                        | `#F6EFDE`                          |
+| `fontFamily`        | `string`                        | `Inter`, system sans-serif stack   |
+| `displayFontFamily` | `string`                        | `Instrument Serif`, Georgia, serif |
+| `borderRadius`      | `number`                        | `20`                               |
+| `position`          | `bottom-right` \| `bottom-left` | `bottom-right`                     |
 
 ### `useTypingEffect` Hook
 
 The widget includes a typewriter animation hook that reveals streamed text progressively instead of jumping on each token:
 
 ```tsx
-import { useTypingEffect } from '@agent-toolkit/widget';
+import { useTypingEffect } from "@agent-toolkit/widget";
 
 function AnimatedMessage({ content }: { content: string }) {
   const { text, isAnimating } = useTypingEffect(content, {
-    charsPerTick: 4,   // characters revealed per interval (default: 4)
-    intervalMs: 25,     // tick interval in milliseconds (default: 25)
+    charsPerTick: 4, // characters revealed per interval (default: 4)
+    intervalMs: 25, // tick interval in milliseconds (default: 25)
   });
 
-  return <p>{text}{isAnimating ? '▋' : ''}</p>;
+  return (
+    <p>
+      {text}
+      {isAnimating ? "▋" : ""}
+    </p>
+  );
 }
 ```
 
@@ -620,3 +708,5 @@ The hook tracks a cursor position via `useRef` and advances it by `charsPerTick`
 ## License
 
 Private
+
+<!-- - Context tham khảo từ KB (có thể rỗng): {Retrieval:ShyHoundsFetch@formalized_content} -->

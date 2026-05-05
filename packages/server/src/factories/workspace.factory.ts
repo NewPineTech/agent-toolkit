@@ -1,5 +1,10 @@
-import type { Workspace, RateLimitConfig, AuthMode, ProviderType } from '@agent-toolkit/types';
-import type { schema } from '../db/index.js';
+import type {
+  Workspace,
+  RateLimitConfig,
+  AuthMode,
+  ProviderType,
+} from "@agent-toolkit/types";
+import type { schema } from "../db/index.js";
 
 type WorkspaceRow = typeof schema.workspaces.$inferSelect;
 

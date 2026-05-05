@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RagflowAdapter } from './ragflow.adapter.js';
-import type { Logger } from '../../interfaces/logger.interface.js';
-import type { ChatProviderConfig } from '../../interfaces/chat-provider.interface.js';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { RagflowAdapter } from "./ragflow.adapter.js";
+import type { Logger } from "../../interfaces/logger.interface.js";
+import type { ChatProviderConfig } from "../../interfaces/chat-provider.interface.js";
 
 const mockLogger: Logger = {
   info: vi.fn(),
@@ -12,9 +12,9 @@ const mockLogger: Logger = {
 };
 
 const config: ChatProviderConfig = {
-  baseUrl: 'https://ragflow.test',
-  apiKey: 'sk-test',
-  agentId: 'agent_1',
+  baseUrl: "https://ragflow.test",
+  apiKey: "sk-test",
+  agentId: "agent_1",
 };
 
 function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
@@ -29,7 +29,7 @@ function sseStream(chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
-describe('RagflowAdapter', () => {
+describe("RagflowAdapter", () => {
   let adapter: RagflowAdapter;
 
   beforeEach(() => {
@@ -37,191 +37,193 @@ describe('RagflowAdapter', () => {
     vi.restoreAllMocks();
   });
 
-  describe('createSession', () => {
-    it('creates a session and returns the ID', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: { id: 'rf_sess_1' } }), {
+  describe("createSession", () => {
+    it("creates a session and returns the ID", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { id: "rf_sess_1" } }), {
           status: 200,
         }),
       );
 
       const id = await adapter.createSession(config);
-      expect(id).toBe('rf_sess_1');
+      expect(id).toBe("rf_sess_1");
 
       const call = vi.mocked(fetch).mock.calls[0]!;
       expect(call[0]).toBe(
-        'https://ragflow.test/api/v1/agents/agent_1/sessions',
+        "https://ragflow.test/api/v1/agents/agent_1/sessions",
       );
-      expect((call[1]!.headers as Record<string, string>)['Authorization']).toBe(
-        'Bearer sk-test',
-      );
+      expect(
+        (call[1]!.headers as Record<string, string>)["Authorization"],
+      ).toBe("Bearer sk-test");
     });
 
-    it('throws on non-OK response', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response('Forbidden', { status: 403 }),
+    it("throws on non-OK response", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response("Forbidden", { status: 403 }),
       );
-      await expect(adapter.createSession(config)).rejects.toThrow('403');
+      await expect(adapter.createSession(config)).rejects.toThrow("403");
     });
 
-    it('throws when response has no session ID', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    it("throws when response has no session ID", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(JSON.stringify({ data: {} }), { status: 200 }),
       );
       await expect(adapter.createSession(config)).rejects.toThrow(
-        'no session ID',
+        "no session ID",
       );
     });
   });
 
-  describe('sendMessage', () => {
-    it('streams token events from SSE (cumulative answers)', async () => {
+  describe("sendMessage", () => {
+    it("streams token events from SSE (cumulative answers)", async () => {
       const body = sseStream([
         'data: {"code":0,"data":{"answer":"Hello"}}\n\n',
         'data: {"code":0,"data":{"answer":"Hello world"}}\n\n',
-        'data: [DONE]\n\n',
+        "data: [DONE]\n\n",
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(body, { status: 200 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 'sess_1', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "sess_1", "hi")) {
         events.push(event);
       }
 
       expect(events).toEqual([
-        { type: 'token', content: 'Hello' },
-        { type: 'token', content: ' world' },
-        { type: 'done', sessionId: 'sess_1', providerSessionId: 'sess_1' },
+        { type: "token", content: "Hello" },
+        { type: "token", content: " world" },
+        { type: "done", sessionId: "sess_1", providerSessionId: "sess_1" },
       ]);
     });
 
-    it('handles delta-style answers (non-cumulative)', async () => {
+    it("handles delta-style answers (non-cumulative)", async () => {
       const body = sseStream([
         'data: {"code":0,"data":{"answer":"alpha"}}\n\n',
         'data: {"code":0,"data":{"answer":"beta"}}\n\n',
-        'data: [DONE]\n\n',
+        "data: [DONE]\n\n",
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(body, { status: 200 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 'sess_1', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "sess_1", "hi")) {
         events.push(event);
       }
 
       expect(events).toEqual([
-        { type: 'token', content: 'alpha' },
-        { type: 'token', content: 'beta' },
-        { type: 'done', sessionId: 'sess_1', providerSessionId: 'sess_1' },
+        { type: "token", content: "alpha" },
+        { type: "token", content: "beta" },
+        { type: "done", sessionId: "sess_1", providerSessionId: "sess_1" },
       ]);
     });
 
-    it('yields error on non-OK response', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response('error', { status: 500 }),
+    it("yields error on non-OK response", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response("error", { status: 500 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 's', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "s", "hi")) {
         events.push(event);
       }
 
       expect(events).toHaveLength(1);
-      expect(events[0]!.type).toBe('error');
+      expect(events[0]!.type).toBe("error");
     });
 
-    it('yields error when response has no body', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    it("yields error when response has no body", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(null, { status: 200 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 's', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "s", "hi")) {
         events.push(event);
       }
 
       expect(events[0]).toMatchObject({
-        type: 'error',
-        code: 'STREAM_ERROR',
+        type: "error",
+        code: "STREAM_ERROR",
       });
     });
 
-    it('handles provider error codes in SSE data', async () => {
+    it("handles provider error codes in SSE data", async () => {
       const body = sseStream([
         'data: {"code":102,"message":"Agent not found"}\n\n',
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(body, { status: 200 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 's', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "s", "hi")) {
         events.push(event);
       }
 
       expect(events[0]).toMatchObject({
-        type: 'error',
-        code: 'PROVIDER_ERROR',
-        message: 'Agent not found',
+        type: "error",
+        code: "PROVIDER_ERROR",
+        message: "Agent not found",
       });
     });
 
-    it('handles fragmented SSE chunks', async () => {
+    it("handles fragmented SSE chunks", async () => {
       const body = sseStream([
         'data: {"code":0,"dat',
         'a":{"answer":"split"}}\n\n',
       ]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(body, { status: 200 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 's', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "s", "hi")) {
         events.push(event);
       }
 
-      expect(events).toContainEqual({ type: 'token', content: 'split' });
+      expect(events).toContainEqual({ type: "token", content: "split" });
     });
 
-    it('falls back to raw text for non-JSON data', async () => {
-      const body = sseStream(['data: plain text response\n\n']);
+    it("falls back to raw text for non-JSON data", async () => {
+      const body = sseStream(["data: plain text response\n\n"]);
 
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(body, { status: 200 }),
       );
 
       const events = [];
-      for await (const event of adapter.sendMessage(config, 's', 'hi')) {
+      for await (const event of adapter.sendMessage(config, "s", "hi")) {
         events.push(event);
       }
 
       expect(events).toContainEqual({
-        type: 'token',
-        content: 'plain text response',
+        type: "token",
+        content: "plain text response",
       });
     });
 
-    it('sends correct request body', async () => {
-      const body = sseStream(['data: [DONE]\n\n']);
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    it("sends correct request body", async () => {
+      const body = sseStream(["data: [DONE]\n\n"]);
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(body, { status: 200 }),
       );
 
-      const gen = adapter.sendMessage(config, 'sess_x', 'What is AI?');
-      for await (const _ of gen) { /* drain */ }
+      const gen = adapter.sendMessage(config, "sess_x", "What is AI?");
+      for await (const _ of gen) {
+        /* drain */
+      }
 
       const call = vi.mocked(fetch).mock.calls[0]!;
       const reqBody = JSON.parse(call[1]!.body as string);
       expect(reqBody).toEqual({
-        question: 'What is AI?',
-        session_id: 'sess_x',
+        question: "What is AI?",
+        session_id: "sess_x",
         stream: true,
       });
     });

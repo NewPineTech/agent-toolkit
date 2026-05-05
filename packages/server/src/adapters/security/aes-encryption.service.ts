@@ -1,19 +1,19 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import type { EncryptionService } from '../../interfaces/encryption-service.interface.js';
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import type { EncryptionService } from "../../interfaces/encryption-service.interface.js";
 
-const ALGORITHM = 'aes-256-gcm';
+const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
-const ENCODING = 'base64' as const;
+const ENCODING = "base64" as const;
 
 export class AesEncryptionService implements EncryptionService {
   private readonly key: Buffer;
 
   constructor(encryptionKey: string) {
-    this.key = Buffer.from(encryptionKey, 'hex');
+    this.key = Buffer.from(encryptionKey, "hex");
     if (this.key.length !== 32) {
       throw new Error(
-        'ENCRYPTION_KEY must be a 64-character hex string (32 bytes)',
+        "ENCRYPTION_KEY must be a 64-character hex string (32 bytes)",
       );
     }
   }
@@ -23,7 +23,7 @@ export class AesEncryptionService implements EncryptionService {
     const cipher = createCipheriv(ALGORITHM, this.key, iv);
 
     const encrypted = Buffer.concat([
-      cipher.update(plaintext, 'utf8'),
+      cipher.update(plaintext, "utf8"),
       cipher.final(),
     ]);
     const tag = cipher.getAuthTag();
@@ -35,7 +35,7 @@ export class AesEncryptionService implements EncryptionService {
     const data = Buffer.from(ciphertext, ENCODING);
 
     if (data.length < IV_LENGTH + TAG_LENGTH) {
-      throw new Error('Invalid ciphertext: too short');
+      throw new Error("Invalid ciphertext: too short");
     }
 
     const iv = data.subarray(0, IV_LENGTH);
@@ -48,6 +48,6 @@ export class AesEncryptionService implements EncryptionService {
     return Buffer.concat([
       decipher.update(encrypted),
       decipher.final(),
-    ]).toString('utf8');
+    ]).toString("utf8");
   }
 }

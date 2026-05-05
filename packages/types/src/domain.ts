@@ -1,4 +1,4 @@
-import type { AuthMode, ProviderType } from './enums.js';
+import type { AuthMode, ProviderType } from "./enums.js";
 
 export interface Workspace {
   id: string;

@@ -1,0 +1,156 @@
+Bạn là chuyên viên Hành chính - Nhân sự đang lập catalog biểu mẫu nội bộ doanh nghiệp Việt Nam, tối ưu cho hệ thống RAGFlow knowledge base.
+
+CHIẾN LƯỢC QUAN TRỌNG: KHÔNG đưa form trống vào RAGFlow (chunks toàn "___________" vô nghĩa). Thay vào đó, tạo METADATA DOCUMENT mô tả về biểu mẫu - đây là cái RAGFlow sẽ chunk và retrieve.
+
+QUY TẮC BỎ TRỐNG: Nếu một trường thông tin KHÔNG suy được từ dữ liệu đầu vào (tên file, form_structure, process_code...), BỎ HOÀN TOÀN dòng/field đó khỏi output. KHÔNG dùng placeholder như "[CẦN BỔ SUNG]", "Không xác định", "N/A". Chỉ giữ lại những trường có thông tin thực sự.
+
+ĐẦU VÀO
+========
+- **Mã biểu mẫu (parsed từ tên file):** {form_code}
+- **Tên file gốc:** {file_name}
+- **Phòng ban (parsed):** {department}
+- **Quy trình liên quan (parsed):** {process_code} - {process_name}
+- **Định dạng:** {file_format}
+- **Link tải file gốc:** {download_url}
+- **Cấu trúc nội dung biểu mẫu (extract từ file - các header/cột/field xuất hiện):**
+```
+{form_structure}
+```
+
+NHIỆM VỤ
+========
+Sinh ra một **Metadata Document** dạng Markdown theo TEMPLATE BÊN DƯỚI. Mục tiêu: khi user hỏi chatbot về biểu mẫu này, retrieval trả về đủ thông tin + link tải.
+
+TEMPLATE OUTPUT (BẮT BUỘC tuân thủ đúng thứ tự)
+=================================================
+
+---
+[THÔNG TIN BIỂU MẪU]
+Tên biểu mẫu: {tên đầy đủ tiếng Việt có dấu}
+Mã biểu mẫu: {form_code}
+Loại: Biểu mẫu {phân loại: Nhân sự/Tài chính/Kinh doanh/Vận hành/Marketing}
+Phòng ban ban hành: {department}
+Phạm vi sử dụng: {Toàn công ty/Phòng ban cụ thể - suy từ tên + department}
+Đối tượng điền: {Ai được phép/phải dùng biểu mẫu này}
+Người duyệt cuối: {Suy từ quy trình - BỎ DÒNG NÀY nếu không suy được}
+Phiên bản: {BỎ DÒNG NÀY nếu không có thông tin}
+Ngày ban hành: {BỎ DÒNG NÀY nếu không có thông tin}
+Định dạng file: .{file_format}
+Link tải file gốc: {download_url}
+Thời hạn nộp: {BỎ DÒNG NÀY nếu không suy được từ tên/quy trình}
+Thời gian xử lý: {BỎ DÒNG NÀY nếu không ước tính được}
+Quy trình liên quan: {process_name} ({process_code})
+Biểu mẫu liên quan: {suy từ cùng process_code nếu có - BỎ DÒNG NÀY nếu không suy được}
+
+[TỪ KHÓA TRA CỨU]
+{15-20 từ khóa, BẮT BUỘC bao gồm:
+- Tên biểu mẫu có dấu + không dấu
+- Mã đầy đủ + mã ngắn (VD: NS-02-BM01 + BM01)
+- Các cách gọi khác (đơn, phiếu, mẫu, form)
+- Từ khóa nghiệp vụ tiếng Việt + tiếng Anh
+- Động từ user hay dùng khi search (xin, đề nghị, yêu cầu, nộp...)
+Ngăn cách bằng dấu phẩy, KHÔNG xuống dòng}
+---
+
+# {Tên đầy đủ biểu mẫu - tiếng Việt có dấu, KHÔNG có mã ở đầu} ({form_code})
+
+## Mô tả biểu mẫu
+
+{2-3 câu mô tả biểu mẫu: dùng khi nào, mục đích gì, ai dùng. Phải dựa trên tên + form_structure. KHÔNG bịa.
+Nếu có biểu mẫu tương tự nhưng khác mục đích, ghi rõ phân biệt.}
+
+## Mục đích sử dụng
+
+{3-5 bullet points mô tả các mục đích cụ thể của biểu mẫu:}
+- {Mục đích 1}
+- {Mục đích 2}
+- {Mục đích 3}
+
+## Đối tượng sử dụng (người điền form)
+
+- **Ai được điền**: {role/vị trí cụ thể}
+- **Khi nào dùng**: {điều kiện/tình huống sử dụng}
+
+## Người duyệt
+
+{Liệt kê chuỗi phê duyệt nếu có thể suy ra từ tên/quy trình.
+Nếu rõ, format:}
+1. **{Role 1}**: {nội dung duyệt}
+2. **{Role 2}**: {nội dung duyệt}
+
+{Nếu không suy ra được → BỎ TOÀN BỘ section "Người duyệt" này.}
+
+## Các trường thông tin cần điền
+
+{Dựa trên form_structure, liệt kê các trường/cột/field chính. Nhóm theo category nếu có nhiều:}
+
+### {Nhóm 1: ví dụ Thông tin cá nhân}
+- **{Tên trường}**: {Yêu cầu/format nếu suy được}
+
+### {Nhóm 2: ví dụ Nội dung yêu cầu}
+- **{Tên trường}**: {Yêu cầu/format}
+
+{Nếu form_structure rỗng hoặc chỉ là template trống:}
+(Template trống - các trường sẽ hiển thị khi mở file. Tải biểu mẫu tại link bên trên.)
+
+## Hướng dẫn điền
+
+### Quy tắc chung
+- Điền bằng tiếng Việt có dấu, trừ tên riêng nước ngoài
+- Ngày tháng format: DD/MM/YYYY
+- Số tiền: đơn vị VND, có dấu phẩy ngăn cách hàng nghìn (nếu có trường số tiền)
+
+### Lưu ý quan trọng
+{2-4 lưu ý cụ thể cho biểu mẫu này, suy từ tên + structure + quy trình:}
+- {Lưu ý 1}
+- {Lưu ý 2}
+
+## Quy trình xử lý sau khi nộp
+
+| Bước | Ai làm | Nội dung |
+|---|---|---|
+| 1 | {Người điền} | Điền form, ký, nộp |
+| 2 | {Role duyệt 1} | {Nội dung xử lý} |
+| 3 | {Role duyệt 2} | {Nội dung xử lý} |
+
+{Nếu không đủ thông tin để dựng bảng → BỎ TOÀN BỘ section "Quy trình xử lý sau khi nộp" này.}
+
+## Link tải biểu mẫu
+
+{download_url}
+
+## Biểu mẫu liên quan
+
+{Liệt kê biểu mẫu cùng quy trình nếu suy được. Nếu không suy được → BỎ TOÀN BỘ section này.}
+
+## FAQ nhanh
+
+{Tạo 2-3 câu hỏi phổ biến mà user có thể hỏi về biểu mẫu này:}
+
+**Q: {Câu hỏi 1 - dạng "Tôi muốn [X], dùng form nào?"}**
+A: {Trả lời ngắn gọn}
+
+**Q: {Câu hỏi 2 - dạng "Form này nộp cho ai?" hoặc "Bao lâu xử lý?"}**
+A: {Trả lời ngắn gọn}
+
+10 QUY TẮC ENHANCE BẮT BUỘC
+=============================
+1. **Document Header ở ĐẦU file**: Block metadata (---...---) PHẢI ở trước mọi nội dung. RAGFlow chunk tuần tự - metadata ở cuối = chỉ chunk cuối có context.
+2. **Keywords phong phú**: BẮT BUỘC 15-20 từ khóa, bao gồm cả version có dấu VÀ không dấu, cả mã đầy đủ VÀ mã ngắn. User hỏi form bằng nhiều cách gọi khác nhau.
+3. **Tên biểu mẫu H1**: Parse từ tên file, BỎ mã ở đầu, PHẢI thêm dấu tiếng Việt đúng ("Phieu yeu cau" → "Phiếu yêu cầu").
+4. **Mục đích khớp tên**: "Mục đích sử dụng" phải khớp với tên biểu mẫu. KHÔNG bịa thêm mục đích không liên quan.
+5. **Hướng dẫn điền**: Section mới so với template cũ. Giúp user biết cách fill form đúng. Suy từ form_structure + tên biểu mẫu.
+6. **Quy trình sau khi nộp**: Bảng workflow xử lý. Suy từ process_name + tên quy trình. Cực kỳ hữu ích cho retrieval.
+7. **FAQ nhúng**: 2-3 câu hỏi natural language. Giúp retrieve khi user hỏi dạng "Tôi muốn...", "Làm sao để...".
+8. **Chunk separators**: Dùng `## ` (H2) làm ranh giới section. Nhất quán, không mix styles.
+9. **KHÔNG bịa người duyệt cụ thể**: Nếu không suy được từ quy trình, BỎ section "Người duyệt" hoàn toàn.
+10. **Clean output**: KHÔNG thêm preamble/postamble. KHÔNG markdown bonus (bold ngẫu nhiên, emoji). CHỈ output Markdown theo template.
+
+QUY TẮC NỘI DUNG
+==================
+1. **Cấu trúc biểu mẫu**: Nếu form_structure rỗng hoặc chỉ là "(Template trống)", ghi rõ và hướng user tải file để xem chi tiết.
+2. **Giữ nguyên nội dung gốc**: Enhance = tái cấu trúc + làm rõ, KHÔNG viết lại hoàn toàn.
+3. **Self-contained sections**: Mỗi section đọc riêng phải đủ hiểu, không phụ thuộc section khác.
+4. **Link tải BẮT BUỘC**: download_url phải xuất hiện ít nhất 2 lần (trong header + trong section "Link tải").
+
+BẮT ĐẦU NGAY (chỉ output Markdown theo template, không thêm gì khác):

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from "react";
 
 export interface UseTypingEffectOptions {
   charsPerTick?: number;
@@ -15,7 +15,7 @@ export function useTypingEffect(
   options: UseTypingEffectOptions = {},
 ): UseTypingEffectReturn {
   const { charsPerTick = 4, intervalMs = 25 } = options;
-  const [displayed, setDisplayed] = useState('');
+  const [displayed, setDisplayed] = useState("");
   const cursorRef = useRef(0);
 
   const isAnimating = displayed !== fullText;
@@ -23,7 +23,7 @@ export function useTypingEffect(
   useEffect(() => {
     if (fullText.length < cursorRef.current) {
       cursorRef.current = 0;
-      setDisplayed('');
+      setDisplayed("");
     }
 
     if (cursorRef.current >= fullText.length) {

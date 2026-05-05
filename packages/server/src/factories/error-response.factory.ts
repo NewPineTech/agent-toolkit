@@ -1,6 +1,6 @@
-import { ErrorCode } from '@agent-toolkit/types';
-import type { ErrorResponse } from '@agent-toolkit/types';
-import type { Logger } from '../interfaces/logger.interface.js';
+import { ErrorCode } from "@agent-toolkit/types";
+import type { ErrorResponse } from "@agent-toolkit/types";
+import type { Logger } from "../interfaces/logger.interface.js";
 
 export class ErrorResponseFactory {
   constructor(private readonly logger: Logger) {}
@@ -22,7 +22,7 @@ export class ErrorResponseFactory {
       };
     }
 
-    this.logger.error('Unhandled error', {
+    this.logger.error("Unhandled error", {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       requestId,
@@ -33,7 +33,7 @@ export class ErrorResponseFactory {
       body: {
         error: {
           code: ErrorCode.INTERNAL_ERROR,
-          message: 'An internal error occurred',
+          message: "An internal error occurred",
           requestId,
         },
       },
@@ -48,23 +48,39 @@ export class AppError extends Error {
     public readonly statusCode: number,
   ) {
     super(message);
-    this.name = 'AppError';
+    this.name = "AppError";
   }
 
   static invalidWorkspace(): AppError {
-    return new AppError(ErrorCode.INVALID_WORKSPACE, 'Workspace not found', 404);
+    return new AppError(
+      ErrorCode.INVALID_WORKSPACE,
+      "Workspace not found",
+      404,
+    );
   }
 
   static domainNotAllowed(): AppError {
-    return new AppError(ErrorCode.DOMAIN_NOT_ALLOWED, 'Origin not allowed', 403);
+    return new AppError(
+      ErrorCode.DOMAIN_NOT_ALLOWED,
+      "Origin not allowed",
+      403,
+    );
   }
 
   static invalidToken(): AppError {
-    return new AppError(ErrorCode.INVALID_TOKEN, 'Invalid or expired token', 401);
+    return new AppError(
+      ErrorCode.INVALID_TOKEN,
+      "Invalid or expired token",
+      401,
+    );
   }
 
   static rateLimited(retryAfter?: number): AppError {
-    const err = new AppError(ErrorCode.RATE_LIMITED, 'Rate limit exceeded', 429);
+    const err = new AppError(
+      ErrorCode.RATE_LIMITED,
+      "Rate limit exceeded",
+      429,
+    );
     (err as AppError & { retryAfter?: number }).retryAfter = retryAfter;
     return err;
   }
@@ -78,19 +94,19 @@ export class AppError extends Error {
   }
 
   static sessionNotFound(): AppError {
-    return new AppError(ErrorCode.SESSION_NOT_FOUND, 'Session not found', 404);
+    return new AppError(ErrorCode.SESSION_NOT_FOUND, "Session not found", 404);
   }
 
   static sessionExpired(): AppError {
-    return new AppError(ErrorCode.SESSION_EXPIRED, 'Session has expired', 401);
+    return new AppError(ErrorCode.SESSION_EXPIRED, "Session has expired", 401);
   }
 
   static providerError(): AppError {
-    return new AppError(ErrorCode.PROVIDER_ERROR, 'Provider error', 502);
+    return new AppError(ErrorCode.PROVIDER_ERROR, "Provider error", 502);
   }
 
   static invalidAuth(): AppError {
-    return new AppError(ErrorCode.INVALID_AUTH, 'Invalid authentication', 401);
+    return new AppError(ErrorCode.INVALID_AUTH, "Invalid authentication", 401);
   }
 
   static validationError(message: string): AppError {

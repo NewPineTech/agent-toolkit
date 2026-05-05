@@ -1,17 +1,17 @@
-import { parseArgs } from 'node:util';
-import { z } from 'zod';
-import { createDatabase } from './connection.js';
-import { workspaces } from './schema.js';
-import { AesEncryptionService } from '../adapters/security/aes-encryption.service.js';
+import { parseArgs } from "node:util";
+import { z } from "zod";
+import { createDatabase } from "./connection.js";
+import { workspaces } from "./schema.js";
+import { AesEncryptionService } from "../adapters/security/aes-encryption.service.js";
 
 const argsSchema = z.object({
-  id: z.string().min(1, 'Workspace ID is required'),
-  providerType: z.string().default('ragflow'),
-  agentId: z.string().min(1, 'Agent ID is required'),
-  apiKey: z.string().min(1, 'API key is required'),
-  baseUrl: z.string().url('Base URL must be a valid URL'),
+  id: z.string().min(1, "Workspace ID is required"),
+  providerType: z.string().default("ragflow"),
+  agentId: z.string().min(1, "Agent ID is required"),
+  apiKey: z.string().min(1, "API key is required"),
+  baseUrl: z.string().url("Base URL must be a valid URL"),
   domains: z.array(z.string()).default([]),
-  authMode: z.enum(['anonymous', 'authenticated', 'both']).default('anonymous'),
+  authMode: z.enum(["anonymous", "authenticated", "both"]).default("anonymous"),
   maxRequests: z.coerce.number().int().positive().default(30),
   windowMs: z.coerce.number().int().positive().default(60000),
   maxMessageLength: z.coerce.number().int().positive().default(4000),
@@ -53,22 +53,22 @@ Example:
 async function main() {
   // Strip leading "--" leaked by pnpm's argument forwarding
   const rawArgv = process.argv.slice(2);
-  const cleanArgv = rawArgv[0] === '--' ? rawArgv.slice(1) : rawArgv;
+  const cleanArgv = rawArgv[0] === "--" ? rawArgv.slice(1) : rawArgv;
 
   const { values } = parseArgs({
     args: cleanArgv,
     options: {
-      id: { type: 'string' },
-      'provider-type': { type: 'string' },
-      'agent-id': { type: 'string' },
-      'api-key': { type: 'string' },
-      'base-url': { type: 'string' },
-      domains: { type: 'string' },
-      'auth-mode': { type: 'string' },
-      'max-requests': { type: 'string' },
-      'window-ms': { type: 'string' },
-      'max-message-length': { type: 'string' },
-      help: { type: 'boolean', short: 'h' },
+      id: { type: "string" },
+      "provider-type": { type: "string" },
+      "agent-id": { type: "string" },
+      "api-key": { type: "string" },
+      "base-url": { type: "string" },
+      domains: { type: "string" },
+      "auth-mode": { type: "string" },
+      "max-requests": { type: "string" },
+      "window-ms": { type: "string" },
+      "max-message-length": { type: "string" },
+      help: { type: "boolean", short: "h" },
     },
     strict: true,
     allowPositionals: true,
@@ -79,37 +79,39 @@ async function main() {
     process.exit(0);
   }
 
-  const connectionString = process.env['DATABASE_URL'];
+  const connectionString = process.env["DATABASE_URL"];
   if (!connectionString) {
-    console.error('Error: DATABASE_URL environment variable is required');
+    console.error("Error: DATABASE_URL environment variable is required");
     process.exit(1);
   }
 
-  const encryptionKey = process.env['ENCRYPTION_KEY'];
+  const encryptionKey = process.env["ENCRYPTION_KEY"];
   if (!encryptionKey) {
-    console.error('Error: ENCRYPTION_KEY environment variable is required');
+    console.error("Error: ENCRYPTION_KEY environment variable is required");
     process.exit(1);
   }
 
   const parsed = argsSchema.safeParse({
     id: values.id,
-    providerType: values['provider-type'],
-    agentId: values['agent-id'],
-    apiKey: values['api-key'],
-    baseUrl: values['base-url'],
-    domains: values.domains ? values.domains.split(',').map((d) => d.trim()) : undefined,
-    authMode: values['auth-mode'],
-    maxRequests: values['max-requests'],
-    windowMs: values['window-ms'],
-    maxMessageLength: values['max-message-length'],
+    providerType: values["provider-type"],
+    agentId: values["agent-id"],
+    apiKey: values["api-key"],
+    baseUrl: values["base-url"],
+    domains: values.domains
+      ? values.domains.split(",").map((d) => d.trim())
+      : undefined,
+    authMode: values["auth-mode"],
+    maxRequests: values["max-requests"],
+    windowMs: values["window-ms"],
+    maxMessageLength: values["max-message-length"],
   });
 
   if (!parsed.success) {
-    console.error('Validation errors:');
+    console.error("Validation errors:");
     for (const issue of parsed.error.issues) {
-      console.error(`  - ${issue.path.join('.')}: ${issue.message}`);
+      console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
     }
-    console.error('\nRun with --help for usage information.');
+    console.error("\nRun with --help for usage information.");
     process.exit(1);
   }
 
@@ -158,13 +160,15 @@ async function main() {
   console.log(`  Agent ID:    ${args.agentId}`);
   console.log(`  Base URL:    ${args.baseUrl}`);
   console.log(`  Auth mode:   ${args.authMode}`);
-  console.log(`  Domains:     ${args.domains.length > 0 ? args.domains.join(', ') : '(none)'}`);
+  console.log(
+    `  Domains:     ${args.domains.length > 0 ? args.domains.join(", ") : "(none)"}`,
+  );
   console.log(`  Rate limit:  ${args.maxRequests} req / ${args.windowMs}ms`);
 
   await pool.end();
 }
 
 main().catch((err: unknown) => {
-  console.error('Failed to create workspace:', err);
+  console.error("Failed to create workspace:", err);
   process.exit(1);
 });

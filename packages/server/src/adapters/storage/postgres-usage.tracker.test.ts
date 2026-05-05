@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PostgresUsageTracker } from './postgres-usage.tracker.js';
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { PostgresUsageTracker } from "./postgres-usage.tracker.js";
 
 function createMockDb() {
   const chain = {
@@ -16,7 +16,7 @@ function createMockDb() {
   } as any;
 }
 
-describe('PostgresUsageTracker', () => {
+describe("PostgresUsageTracker", () => {
   let db: ReturnType<typeof createMockDb>;
   let tracker: PostgresUsageTracker;
 
@@ -25,14 +25,14 @@ describe('PostgresUsageTracker', () => {
     tracker = new PostgresUsageTracker(db);
   });
 
-  it('increments usage with upsert', async () => {
-    await tracker.increment('ws_1', '2026-01-15');
+  it("increments usage with upsert", async () => {
+    await tracker.increment("ws_1", "2026-01-15");
 
     expect(db.insert).toHaveBeenCalled();
     expect(db._chain.values).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: 'ws_1',
-        date: '2026-01-15',
+        workspaceId: "ws_1",
+        date: "2026-01-15",
         messageCount: 1,
         tokenCount: 0,
       }),
@@ -40,27 +40,37 @@ describe('PostgresUsageTracker', () => {
     expect(db._chain.onConflictDoUpdate).toHaveBeenCalled();
   });
 
-  it('returns usage records for date range', async () => {
+  it("returns usage records for date range", async () => {
     const rows = [
-      { workspaceId: 'ws_1', date: '2026-01-15', messageCount: 10, tokenCount: 500 },
-      { workspaceId: 'ws_1', date: '2026-01-16', messageCount: 5, tokenCount: 200 },
+      {
+        workspaceId: "ws_1",
+        date: "2026-01-15",
+        messageCount: 10,
+        tokenCount: 500,
+      },
+      {
+        workspaceId: "ws_1",
+        date: "2026-01-16",
+        messageCount: 5,
+        tokenCount: 200,
+      },
     ];
     db._chain.orderBy.mockResolvedValue(rows);
 
-    const result = await tracker.getUsage('ws_1', '2026-01-15', '2026-01-16');
+    const result = await tracker.getUsage("ws_1", "2026-01-15", "2026-01-16");
 
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({
-      workspaceId: 'ws_1',
-      date: '2026-01-15',
+      workspaceId: "ws_1",
+      date: "2026-01-15",
       messageCount: 10,
       tokenCount: 500,
     });
   });
 
-  it('returns empty array when no usage found', async () => {
+  it("returns empty array when no usage found", async () => {
     db._chain.orderBy.mockResolvedValue([]);
-    const result = await tracker.getUsage('ws_1', '2026-01-01', '2026-01-31');
+    const result = await tracker.getUsage("ws_1", "2026-01-01", "2026-01-31");
     expect(result).toEqual([]);
   });
 });

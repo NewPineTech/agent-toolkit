@@ -1,4 +1,4 @@
-import type { UsageRecord } from '@agent-toolkit/types';
+import type { UsageRecord } from "@agent-toolkit/types";
 
 export interface UsageTracker {
   /** Increment message count for a workspace on a given date. */

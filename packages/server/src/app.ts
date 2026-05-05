@@ -1,31 +1,31 @@
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import { fastifyAwilixPlugin, diContainer } from '@fastify/awilix';
-import { asClass, asFunction, asValue, Lifetime } from 'awilix';
-import { Redis } from 'ioredis';
-import type { Config } from './config/env.js';
-import { createDatabase } from './db/connection.js';
+import Fastify from "fastify";
+import cors from "@fastify/cors";
+import { fastifyAwilixPlugin, diContainer } from "@fastify/awilix";
+import { asClass, asFunction, asValue, Lifetime } from "awilix";
+import { Redis } from "ioredis";
+import type { Config } from "./config/env.js";
+import { createDatabase } from "./db/connection.js";
 
-import { CompositeHealthChecker } from './adapters/infra/composite-health.checker.js';
-import { healthRoutes } from './routes/health.routes.js';
-import { widgetRoutes } from './routes/widget.routes.js';
-import { embedRoute } from './routes/embed.route.js';
-import { AesEncryptionService } from './adapters/security/aes-encryption.service.js';
-import { JwtTokenService } from './adapters/security/jwt-token.service.js';
-import { AllowlistDomainValidator } from './adapters/security/allowlist-domain.validator.js';
-import { PostgresSessionStore } from './adapters/storage/postgres-session.store.js';
-import { PostgresUsageTracker } from './adapters/storage/postgres-usage.tracker.js';
-import { RedisSessionCache } from './adapters/storage/redis-session.cache.js';
-import { RedisWorkspaceCache } from './adapters/storage/redis-workspace.cache.js';
-import { RedisRateLimiter } from './adapters/infra/redis-rate.limiter.js';
-import { PinoLoggerAdapter } from './adapters/infra/pino-logger.adapter.js';
+import { CompositeHealthChecker } from "./adapters/infra/composite-health.checker.js";
+import { healthRoutes } from "./routes/health.routes.js";
+import { widgetRoutes } from "./routes/widget.routes.js";
+import { embedRoute } from "./routes/embed.route.js";
+import { AesEncryptionService } from "./adapters/security/aes-encryption.service.js";
+import { JwtTokenService } from "./adapters/security/jwt-token.service.js";
+import { AllowlistDomainValidator } from "./adapters/security/allowlist-domain.validator.js";
+import { PostgresSessionStore } from "./adapters/storage/postgres-session.store.js";
+import { PostgresUsageTracker } from "./adapters/storage/postgres-usage.tracker.js";
+import { RedisSessionCache } from "./adapters/storage/redis-session.cache.js";
+import { RedisWorkspaceCache } from "./adapters/storage/redis-workspace.cache.js";
+import { RedisRateLimiter } from "./adapters/infra/redis-rate.limiter.js";
+import { PinoLoggerAdapter } from "./adapters/infra/pino-logger.adapter.js";
 import {
   ChatProviderFactory,
   SessionFactory,
   TokenFactory,
   WorkspaceFactory,
   ErrorResponseFactory,
-} from './factories/index.js';
+} from "./factories/index.js";
 
 export interface AppCradle {
   config: Config;
@@ -45,11 +45,11 @@ export interface AppCradle {
   errorResponseFactory: ErrorResponseFactory;
 }
 
-declare module '@fastify/awilix' {
+declare module "@fastify/awilix" {
   interface Cradle extends AppCradle {}
 }
 
-declare module 'fastify' {
+declare module "fastify" {
   interface FastifyRequest {
     requestId: string;
   }
@@ -61,7 +61,7 @@ export async function createApp(config: Config) {
       level: config.LOG_LEVEL,
     },
     genReqId: () => crypto.randomUUID(),
-    requestIdHeader: 'x-request-id',
+    requestIdHeader: "x-request-id",
   });
 
   const { db, pool } = createDatabase(config.DATABASE_URL);
@@ -88,32 +88,32 @@ export async function createApp(config: Config) {
     ).setLifetime(Lifetime.SINGLETON),
 
     domainValidator: asFunction(
-      () => new AllowlistDomainValidator(config.NODE_ENV === 'development'),
+      () => new AllowlistDomainValidator(config.NODE_ENV === "development"),
     ).setLifetime(Lifetime.SINGLETON),
 
-    sessionStore: asFunction(
-      () => new PostgresSessionStore(db),
-    ).setLifetime(Lifetime.SINGLETON),
+    sessionStore: asFunction(() => new PostgresSessionStore(db)).setLifetime(
+      Lifetime.SINGLETON,
+    ),
 
-    sessionCache: asFunction(
-      () => new RedisSessionCache(redis),
-    ).setLifetime(Lifetime.SINGLETON),
+    sessionCache: asFunction(() => new RedisSessionCache(redis)).setLifetime(
+      Lifetime.SINGLETON,
+    ),
 
-    usageTracker: asFunction(
-      () => new PostgresUsageTracker(db),
-    ).setLifetime(Lifetime.SINGLETON),
+    usageTracker: asFunction(() => new PostgresUsageTracker(db)).setLifetime(
+      Lifetime.SINGLETON,
+    ),
 
-    rateLimiter: asFunction(
-      () => new RedisRateLimiter(redis),
-    ).setLifetime(Lifetime.SINGLETON),
+    rateLimiter: asFunction(() => new RedisRateLimiter(redis)).setLifetime(
+      Lifetime.SINGLETON,
+    ),
 
     workspaceCache: asFunction(
       () => new RedisWorkspaceCache(redis),
     ).setLifetime(Lifetime.SINGLETON),
 
-    logger: asFunction(
-      () => new PinoLoggerAdapter(app.log),
-    ).setLifetime(Lifetime.SINGLETON),
+    logger: asFunction(() => new PinoLoggerAdapter(app.log)).setLifetime(
+      Lifetime.SINGLETON,
+    ),
 
     chatProviderFactory: asFunction(
       (cradle: AppCradle) =>
@@ -135,9 +135,9 @@ export async function createApp(config: Config) {
 
   await app.register(cors, {
     origin: true,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
-    exposedHeaders: ['X-Request-Id'],
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+    exposedHeaders: ["X-Request-Id"],
     maxAge: config.CORS_MAX_AGE,
   });
 
@@ -147,11 +147,11 @@ export async function createApp(config: Config) {
   await app.register(widgetRoutes, { db });
   await app.register(embedRoute);
 
-  app.addHook('onRequest', async (request, reply) => {
-    reply.header('X-Request-Id', request.id);
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("X-Request-Id", request.id);
   });
 
-  app.addHook('onClose', async () => {
+  app.addHook("onClose", async () => {
     await redis.quit();
     await pool.end();
   });

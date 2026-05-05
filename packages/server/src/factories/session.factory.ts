@@ -1,5 +1,5 @@
-import { nanoid } from 'nanoid';
-import type { Session } from '@agent-toolkit/types';
+import { nanoid } from "nanoid";
+import type { Session } from "@agent-toolkit/types";
 
 export class SessionFactory {
   create(params: {

@@ -9,9 +9,9 @@ The typewriter effect is **already implemented** in the codebase. This plan cove
 
 ## Tracks
 
-| Track | Agent | Beads (in order) | File Scope |
-|-------|-------|-------------------|------------|
-| 1 | AmberWidget | 1go.1 → 1go.2 → 1go.3 | `packages/widget/**` |
+| Track | Agent       | Beads (in order)      | File Scope           |
+| ----- | ----------- | --------------------- | -------------------- |
+| 1     | AmberWidget | 1go.1 → 1go.2 → 1go.3 | `packages/widget/**` |
 
 ## Track Details
 

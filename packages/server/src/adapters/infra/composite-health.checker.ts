@@ -1,10 +1,10 @@
-import type { Redis } from 'ioredis';
-import type pg from 'pg';
-import type { ComponentHealth } from '@agent-toolkit/types';
+import type { Redis } from "ioredis";
+import type pg from "pg";
+import type { ComponentHealth } from "@agent-toolkit/types";
 import type {
   HealthChecker,
   HealthStatus,
-} from '../../interfaces/health-checker.interface.js';
+} from "../../interfaces/health-checker.interface.js";
 
 export class CompositeHealthChecker implements HealthChecker {
   constructor(
@@ -20,11 +20,11 @@ export class CompositeHealthChecker implements HealthChecker {
 
     const components: Record<string, ComponentHealth> = { db, cache };
     const allHealthy = Object.values(components).every(
-      (c) => c.status === 'healthy',
+      (c) => c.status === "healthy",
     );
 
     return {
-      status: allHealthy ? 'healthy' : 'unhealthy',
+      status: allHealthy ? "healthy" : "unhealthy",
       components,
     };
   }
@@ -34,16 +34,16 @@ export class CompositeHealthChecker implements HealthChecker {
     try {
       const client = await this.pool.connect();
       try {
-        await client.query('SELECT 1');
+        await client.query("SELECT 1");
       } finally {
         client.release();
       }
-      return { status: 'healthy', latencyMs: Date.now() - start };
+      return { status: "healthy", latencyMs: Date.now() - start };
     } catch (err) {
       return {
-        status: 'unhealthy',
+        status: "unhealthy",
         latencyMs: Date.now() - start,
-        message: err instanceof Error ? err.message : 'Unknown error',
+        message: err instanceof Error ? err.message : "Unknown error",
       };
     }
   }
@@ -52,12 +52,12 @@ export class CompositeHealthChecker implements HealthChecker {
     const start = Date.now();
     try {
       await this.redis.ping();
-      return { status: 'healthy', latencyMs: Date.now() - start };
+      return { status: "healthy", latencyMs: Date.now() - start };
     } catch (err) {
       return {
-        status: 'unhealthy',
+        status: "unhealthy",
         latencyMs: Date.now() - start,
-        message: err instanceof Error ? err.message : 'Unknown error',
+        message: err instanceof Error ? err.message : "Unknown error",
       };
     }
   }

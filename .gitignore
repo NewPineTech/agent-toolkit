@@ -20,6 +20,12 @@ dist/
 .DS_Store
 Thumbs.db
 
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Docker
 docker-compose.override.yml
 
@@ -36,3 +42,5 @@ storybook-static
 
 .beads/
 .ccu/
+
+index.html

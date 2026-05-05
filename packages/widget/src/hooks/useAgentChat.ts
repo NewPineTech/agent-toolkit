@@ -1,10 +1,20 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import type { ChatStreamEvent, SessionResponse } from '@agent-toolkit/types';
-import { getApiUrl } from '../config.js';
+import { useState, useCallback, useRef, useEffect } from "react";
+import type { ChatStreamEvent, SessionResponse } from "@agent-toolkit/types";
+import { getApiUrl } from "../config.js";
+
+function generateId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 export interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: Date;
 }
@@ -24,13 +34,10 @@ export interface UseAgentChatReturn {
   isReady: boolean;
 }
 
-const SESSION_STORAGE_KEY = 'agent_chat_session';
+const SESSION_STORAGE_KEY = "agent_chat_session";
 
-export function useAgentChat(
-  options: UseAgentChatOptions,
-): UseAgentChatReturn {
+export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
   const { workspaceId, onError } = options;
-  const apiUrl = getApiUrl();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,9 +70,9 @@ export function useAgentChat(
         localStorage.removeItem(`${SESSION_STORAGE_KEY}:${workspaceId}`);
       }
 
-      const response = await fetch(`${apiUrl}/widget/session`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(`${getApiUrl()}/widget/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId }),
       });
 
@@ -85,7 +92,7 @@ export function useAgentChat(
       setIsReady(true);
     } catch (err) {
       const error =
-        err instanceof Error ? err : new Error('Session init failed');
+        err instanceof Error ? err : new Error("Session init failed");
       setError(error);
       onErrorRef.current?.(error);
     }
@@ -103,16 +110,16 @@ export function useAgentChat(
       if (!tokenRef.current || !sessionIdRef.current || isLoading) return;
 
       const userMessage: Message = {
-        id: `msg_${Date.now()}_user`,
-        role: 'user',
+        id: `msg_${generateId()}`,
+        role: "user",
         content: text,
         timestamp: new Date(),
       };
 
       const assistantMessage: Message = {
-        id: `msg_${Date.now()}_assistant`,
-        role: 'assistant',
-        content: '',
+        id: `msg_${generateId()}`,
+        role: "assistant",
+        content: "",
         timestamp: new Date(),
       };
 
@@ -125,10 +132,10 @@ export function useAgentChat(
 
       void (async () => {
         try {
-          const response = await fetch(`${apiUrl}/widget/chat`, {
-            method: 'POST',
+          const response = await fetch(`${getApiUrl()}/widget/chat`, {
+            method: "POST",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
               Authorization: `Bearer ${tokenRef.current}`,
             },
             body: JSON.stringify({
@@ -139,13 +146,11 @@ export function useAgentChat(
           });
 
           if (response.status === 401) {
-            localStorage.removeItem(
-              `${SESSION_STORAGE_KEY}:${workspaceId}`,
-            );
+            localStorage.removeItem(`${SESSION_STORAGE_KEY}:${workspaceId}`);
             tokenRef.current = null;
             sessionIdRef.current = null;
             await initSession();
-            throw new Error('Session expired, please try again');
+            throw new Error("Session expired, please try again");
           }
 
           if (!response.ok) {
@@ -153,34 +158,34 @@ export function useAgentChat(
           }
 
           if (!response.body) {
-            throw new Error('No response body');
+            throw new Error("No response body");
           }
 
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
-          let buffer = '';
+          let buffer = "";
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-            const events = buffer.split('\n\n');
-            buffer = events.pop() ?? '';
+            const events = buffer.split("\n\n");
+            buffer = events.pop() ?? "";
 
             for (const raw of events) {
-              if (!raw.startsWith('data: ')) continue;
+              if (!raw.startsWith("data: ")) continue;
               let event: ChatStreamEvent;
               try {
                 event = JSON.parse(raw.slice(6)) as ChatStreamEvent;
               } catch {
                 continue;
               }
-              if (event.type === 'token') {
+              if (event.type === "token") {
                 setMessages((prev) => {
                   const updated = [...prev];
                   const last = updated[updated.length - 1];
-                  if (last?.role === 'assistant') {
+                  if (last?.role === "assistant") {
                     updated[updated.length - 1] = {
                       ...last,
                       content: last.content + event.content,
@@ -188,15 +193,15 @@ export function useAgentChat(
                   }
                   return updated;
                 });
-              } else if (event.type === 'error') {
+              } else if (event.type === "error") {
                 throw new Error(event.message);
               }
             }
           }
         } catch (err) {
-          if (err instanceof DOMException && err.name === 'AbortError') return;
+          if (err instanceof DOMException && err.name === "AbortError") return;
           const chatError =
-            err instanceof Error ? err : new Error('Chat failed');
+            err instanceof Error ? err : new Error("Chat failed");
           setError(chatError);
           onErrorRef.current?.(chatError);
         } finally {

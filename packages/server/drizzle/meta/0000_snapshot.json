@@ -124,12 +124,8 @@
           "name": "sessions_workspace_id_workspaces_id_fk",
           "tableFrom": "sessions",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -199,12 +195,8 @@
           "name": "usage_workspace_id_workspaces_id_fk",
           "tableFrom": "usage",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -212,10 +204,7 @@
       "compositePrimaryKeys": {
         "usage_workspace_id_date_pk": {
           "name": "usage_workspace_id_date_pk",
-          "columns": [
-            "workspace_id",
-            "date"
-          ]
+          "columns": ["workspace_id", "date"]
         }
       },
       "uniqueConstraints": {},

@@ -1,4 +1,4 @@
-import type { Session } from '@agent-toolkit/types';
+import type { Session } from "@agent-toolkit/types";
 
 export interface SessionStore {
   /** Persist a new session. */

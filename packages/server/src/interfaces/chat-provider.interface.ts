@@ -1,4 +1,4 @@
-import type { ChatStreamEvent } from '@agent-toolkit/types';
+import type { ChatStreamEvent } from "@agent-toolkit/types";
 
 export interface ChatProviderConfig {
   baseUrl: string;

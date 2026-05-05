@@ -1,22 +1,22 @@
 export interface ChatTokenEvent {
-  type: 'token';
+  type: "token";
   content: string;
 }
 
 export interface ChatDoneEvent {
-  type: 'done';
+  type: "done";
   sessionId: string;
   providerSessionId: string;
 }
 
 export interface ChatErrorEvent {
-  type: 'error';
+  type: "error";
   code: string;
   message: string;
 }
 
 export interface ChatMetadataEvent {
-  type: 'metadata';
+  type: "metadata";
   data: Record<string, unknown>;
 }
 

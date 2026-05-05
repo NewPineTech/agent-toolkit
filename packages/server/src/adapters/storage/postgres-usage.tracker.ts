@@ -1,8 +1,8 @@
-import { eq, and, gte, lte, sql } from 'drizzle-orm';
-import type { UsageRecord } from '@agent-toolkit/types';
-import type { UsageTracker } from '../../interfaces/usage-tracker.interface.js';
-import type { Database } from '../../db/index.js';
-import { usage } from '../../db/schema.js';
+import { eq, and, gte, lte, sql } from "drizzle-orm";
+import type { UsageRecord } from "@agent-toolkit/types";
+import type { UsageTracker } from "../../interfaces/usage-tracker.interface.js";
+import type { Database } from "../../db/index.js";
+import { usage } from "../../db/schema.js";
 
 export class PostgresUsageTracker implements UsageTracker {
   constructor(private readonly db: Database) {}

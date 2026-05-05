@@ -1,4 +1,4 @@
-import type { ErrorCode } from './enums.js';
+import type { ErrorCode } from "./enums.js";
 
 export interface SessionRequest {
   workspaceId: string;
@@ -28,12 +28,12 @@ export interface ErrorResponse {
 }
 
 export interface HealthResponse {
-  status: 'healthy' | 'unhealthy';
+  status: "healthy" | "unhealthy";
   components: Record<string, ComponentHealth>;
 }
 
 export interface ComponentHealth {
-  status: 'healthy' | 'unhealthy';
+  status: "healthy" | "unhealthy";
   latencyMs?: number;
   message?: string;
 }
