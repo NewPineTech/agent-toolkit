@@ -197,7 +197,7 @@ echo ""
 # ── Wait for services ──────────────────────────────────────────────
 info "Waiting for PostgreSQL to be ready..."
 retries=30
-until $COMPOSE exec -T postgres pg_isready -U "${POSTGRES_USER:-agent_toolkit}" &>/dev/null || [ $retries -eq 0 ]; do
+until [ "$($COMPOSE ps -q postgres | xargs docker inspect -f '{{.State.Health.Status}}')" = "healthy" ] || [ $retries -eq 0 ]; do
   retries=$((retries - 1))
   sleep 1
 done
