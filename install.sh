@@ -21,14 +21,14 @@ prompt_or_default() {
   local input
   if [ -n "$default_val" ]; then
     read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default_val}]: ")" input </dev/tty
-    eval "$var_name=\"${input:-$default_val}\""
+    printf -v "$var_name" '%s' "${input:-$default_val}"
   else
     read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input </dev/tty
     while [ -z "$input" ]; do
       echo -e "${RED}  This field is required.${NC}"
       read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input </dev/tty
     done
-    eval "$var_name=\"$input\""
+    printf -v "$var_name" '%s' "$input"
   fi
 }
 
@@ -37,10 +37,10 @@ prompt_optional() {
   local input
   if [ -n "$default_val" ]; then
     read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default_val}]: ")" input </dev/tty
-    eval "$var_name=\"${input:-$default_val}\""
+    printf -v "$var_name" '%s' "${input:-$default_val}"
   else
     read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input </dev/tty
-    eval "$var_name=\"$input\""
+    printf -v "$var_name" '%s' "$input"
   fi
 }
 
@@ -126,14 +126,26 @@ pnpm install --frozen-lockfile 2>/dev/null || pnpm install
 ok "Dependencies installed"
 echo ""
 
+# ── Link CLI command ───────────────────────────────────────────────
+info "Linking Agent Toolkit CLI command..."
+if pnpm link --global >/dev/null 2>&1 && command -v agent-toolkit >/dev/null 2>&1; then
+  ok "CLI available as: agent-toolkit (or atk)"
+else
+  warn "Could not add agent-toolkit to PATH automatically."
+  warn "Run 'pnpm setup', restart your shell, then re-run: pnpm link --global"
+fi
+echo ""
+
 # ── Server port configuration ──────────────────────────────────────
 echo -e "${BOLD}── Server Configuration ─────────────────────────────${NC}"
 echo ""
 prompt_or_default "Server port" "3000" SERVER_PORT
-
-# WIDGET_API_URL can be pre-set via env; otherwise require explicit input
-_default_widget_api_url="${WIDGET_API_URL:-}"
-prompt_optional "Widget API URL (Server URL)" "$_default_widget_api_url" WIDGET_API_URL
+prompt_optional "Widget API URL for clients (optional)" "${WIDGET_API_URL:-}" WIDGET_API_URL
+if [ -n "$WIDGET_API_URL" ]; then
+  ok "Widget API URL: $WIDGET_API_URL"
+else
+  ok "Widget API URL left empty"
+fi
 echo ""
 
 # ── Environment file ───────────────────────────────────────────────
@@ -218,7 +230,7 @@ echo ""
 echo -e "${BOLD}── Workspace Setup ─────────────────────────────────${NC}"
 echo ""
 echo -e "  A workspace connects the widget to your RAGFlow agent."
-echo -e "  You need your RAGFlow agent ID, API key, and server URL."
+echo -e "  Quick setup only asks for the required RAGFlow values."
 echo ""
 
 read -rp "$(echo -e "${CYAN}Create a workspace now? (Y/n)${NC}: ")" CREATE_WS </dev/tty
@@ -230,10 +242,13 @@ if [[ "$CREATE_WS" =~ ^[Yy]$ ]]; then
   prompt_or_default "RAGFlow agent UUID" "" WS_AGENT_ID
   prompt_or_default "RAGFlow API key" "" WS_API_KEY
   prompt_or_default "RAGFlow server URL (e.g. https://ragflow.example.com)" "" WS_BASE_URL
-  prompt_or_default "Allowed domains (comma-separated, or empty for all)" "" WS_DOMAINS
-  prompt_or_default "Auth mode" "anonymous" WS_AUTH_MODE
-  prompt_or_default "Rate limit — max requests per window" "30" WS_MAX_REQUESTS
-  prompt_or_default "Rate limit — window duration (ms)" "60000" WS_WINDOW_MS
+  WS_DOMAINS="*"
+  WS_AUTH_MODE="${WORKSPACE_AUTH_MODE:-anonymous}"
+  WS_MAX_REQUESTS="${WORKSPACE_MAX_REQUESTS:-30}"
+  WS_WINDOW_MS="${WORKSPACE_WINDOW_MS:-60000}"
+  ok "Allowed domains: * (all origins)"
+  ok "Auth mode: $WS_AUTH_MODE"
+  ok "Rate limit: $WS_MAX_REQUESTS requests / ${WS_WINDOW_MS}ms"
   echo ""
 
   # Source .env.prod to get POSTGRES_PASSWORD and ENCRYPTION_KEY
@@ -251,25 +266,23 @@ if [[ "$CREATE_WS" =~ ^[Yy]$ ]]; then
     --auth-mode "$WS_AUTH_MODE"
     --max-requests "$WS_MAX_REQUESTS"
     --window-ms "$WS_WINDOW_MS"
+    --domains "$WS_DOMAINS"
   )
-  if [ -n "${WS_DOMAINS//[[:space:]]/}" ]; then
-    workspace_args+=(--domains "$WS_DOMAINS")
-  fi
 
-  # Run create-workspace inside the server container (has network access to postgres)
+  # Run the Agent Toolkit CLI inside the server container (has network access to postgres)
   $COMPOSE run --rm \
     -e DATABASE_URL="postgresql://${POSTGRES_USER:-agent_toolkit}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_toolkit}" \
     -e ENCRYPTION_KEY="$ENCRYPTION_KEY" \
     --entrypoint "" \
     server \
-    node /app/packages/server/dist/db/create-workspace.js "${workspace_args[@]}" \
+    atk workspace create "${workspace_args[@]}" \
     && ok "Workspace '${WS_ID}' created successfully" \
-    || warn "Workspace creation failed. You can retry manually with: ./scripts/deploy.sh create-workspace"
+    || warn "Workspace creation failed. Retry with: docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create"
   echo ""
 else
   echo ""
   info "Skipping workspace creation. You can create one later with:"
-  echo -e "    ${CYAN}./scripts/deploy.sh create-workspace --id ws_my_project --agent-id <UUID> --api-key <KEY> --base-url <URL>${NC}"
+  echo -e "    ${CYAN}docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create --id ws_my_project --agent-id <UUID> --api-key <KEY> --base-url <URL> --domains \"*\"${NC}"
   echo ""
 fi
 
@@ -295,6 +308,10 @@ echo ""
 echo -e "    ${CYAN}cd $INSTALL_DIR${NC}"
 echo -e "    ${CYAN}./scripts/deploy.sh status${NC}    # Check service health"
 echo -e "    ${CYAN}./scripts/deploy.sh logs${NC}      # Tail server logs"
+echo -e "    ${CYAN}docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace list${NC}  # List configured workspaces"
+echo -e "    ${CYAN}docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace get <workspaceId>${NC}"
+echo -e "    ${CYAN}agent-toolkit widget iframe <workspaceId> --api-url http://localhost:${SERVER_PORT}${NC}"
+echo -e "    ${CYAN}agent-toolkit chat ask <workspaceId> \"Hello\" --api-url http://localhost:${SERVER_PORT}${NC}"
 echo ""
 echo -e "  ${BOLD}Docs:${NC} See DEPLOYMENT.md for production deployment details"
 echo ""
