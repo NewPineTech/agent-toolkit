@@ -17,10 +17,6 @@ Commands:
   logs        Tail service logs
   restart     Rebuild and restart the server
   status      Show service status and health
-  seed              Run the database seed script
-  create-workspace  Create (or update) a workspace in the database
-                    Pass all --flag <value> options after the command.
-                    Run with --help for the full option list.
 EOF
   exit 1
 }
@@ -61,16 +57,6 @@ case "${1:-}" in
     echo ""
     echo "Health checks:"
     $COMPOSE ps --format "table {{.Name}}\t{{.Status}}"
-    ;;
-  seed)
-    check_env
-    $COMPOSE exec server node -e \
-      "require('child_process').execSync('npx tsx src/db/seed.ts', {stdio:'inherit', cwd:'/app/packages/server'})"
-    ;;
-  create-workspace)
-    check_env
-    $COMPOSE run --rm --entrypoint "" server \
-      node /app/packages/server/dist/db/create-workspace.js "${@:2}"
     ;;
   *)
     usage

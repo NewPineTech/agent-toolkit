@@ -16,6 +16,11 @@ describe("AllowlistDomainValidator", () => {
     expect(validator.validate("https://example.com", [])).toBe(false);
   });
 
+  it("allows any valid origin when allowlist contains global wildcard", () => {
+    expect(validator.validate("https://example.com", ["*"])).toBe(true);
+    expect(validator.validate("https://app.acme.com", ["*"])).toBe(true);
+  });
+
   it("matches exact origin", () => {
     expect(
       validator.validate("https://example.com", ["https://example.com"]),

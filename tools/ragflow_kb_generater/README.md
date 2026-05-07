@@ -63,44 +63,48 @@ sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
 
 ## Chạy pipeline
 
+> Bản cài đặt gọi trực tiếp `agent-toolkit ...` hoặc `atk ...`. Nếu chạy từ source checkout thủ công, chạy `pnpm link --global` một lần sau `pnpm install`.
+
 ```bash
-# Chạy toàn bộ (interactive, có checkpoint xác nhận trước upload)
-./run_all.sh              # full mode
-./run_all.sh --test       # test mode (5 file đầu mỗi step)
+# Chạy qua Agent Toolkit CLI, không gọi shell script trực tiếp
+agent-toolkit ingest run              # full mode
+agent-toolkit ingest run --test       # test mode (5 file đầu mỗi step)
+agent-toolkit ingest run --dry-run    # preview các lệnh Python sẽ chạy
 ```
 
 ### Chạy từng step
 
 ```bash
 # Step 1: Crawl Drive folder → inventory CSV
-python scripts/step1_inventory.py
+agent-toolkit ingest inventory
 
 # Step 2: OCR PNG lưu đồ → Markdown SOP
 # Gemini: tự động dùng batch mode (async concurrent, nhanh ~4x)
-python scripts/step2_ocr_sop.py --limit 5          # test 5 file
-python scripts/step2_ocr_sop.py                     # full (batch mặc định)
-python scripts/step2_ocr_sop.py --batch-size 10     # tăng concurrency
-python scripts/step2_ocr_sop.py --batch-size 1      # sequential (debug)
+agent-toolkit ingest ocr-sop --limit 5          # test 5 file
+agent-toolkit ingest ocr-sop                    # full (batch mặc định)
+agent-toolkit ingest ocr-sop --batch-size 10    # tăng concurrency
+agent-toolkit ingest ocr-sop --batch-size 1     # sequential (debug)
 
 # Step 3: Generate form metadata cards
-python scripts/step3_form_cards.py --limit 10  # test
-python scripts/step3_form_cards.py             # full
+agent-toolkit ingest form-cards --limit 10  # test
+agent-toolkit ingest form-cards             # full
 
 # Step 3.5 (optional): Convert .md → .pdf
-python scripts/step3_5_md_to_pdf.py --limit 5   # test
-python scripts/step3_5_md_to_pdf.py             # full
+agent-toolkit ingest md-to-pdf --limit 5   # test
+agent-toolkit ingest md-to-pdf             # full
 
 # Step 4: Tạo 4 KB rỗng trong RAGFlow
-python scripts/step4_create_kbs.py
+agent-toolkit ingest kb create
 # → output: data/kb_ids.json (chứa 4 KB IDs để inject vào workflow)
 
 # Step 5: Upload Markdown vào RAGFlow KB
-python scripts/step5_upload_to_ragflow.py --kb sop_kb                # upload .md
-python scripts/step5_upload_to_ragflow.py --kb sop_kb --format pdf   # upload .pdf
-python scripts/step5_upload_to_ragflow.py --kb forms_kb --format pdf
+agent-toolkit ingest upload --kb sop_kb                # upload .md
+agent-toolkit ingest upload --kb sop_kb --format pdf   # upload .pdf
+agent-toolkit ingest upload --kb forms_kb --format pdf
 
 # Step 6: Smoke test retrieval (optional)
-python scripts/step6_test_retrieval.py
+agent-toolkit ingest test --kb sop_kb
+agent-toolkit ingest test --kb forms_kb
 ```
 
 ## Chi phí ước tính
