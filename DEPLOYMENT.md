@@ -29,7 +29,10 @@ The installer will prompt for any configuration it needs. You can also pre-set v
 | Variable | Default | What it controls |
 | -------- | ------- | ---------------- |
 | `AGENT_TOOLKIT_DIR` | `agent-toolkit` | Directory to clone the repo into |
-| `WIDGET_API_URL` | `http://localhost:<PORT>` | API URL baked into the Storybook build |
+| `WIDGET_API_URL` | empty | Client-facing server URL baked into the Storybook build |
+| `WORKSPACE_AUTH_MODE` | `anonymous` | Workspace auth mode used by quick setup |
+| `WORKSPACE_MAX_REQUESTS` | `30` | Workspace rate-limit max requests |
+| `WORKSPACE_WINDOW_MS` | `60000` | Workspace rate-limit window in ms |
 
 ```bash
 # Example: install into a custom dir, point Storybook at a remote API
@@ -60,7 +63,7 @@ Runs `pnpm install --frozen-lockfile` to install all workspace packages.
 
 Asks for the host port to expose the API server (default: `3000`). This becomes `PORT` in `.env.prod`.
 
-Then asks for the Widget API URL used by Storybook (default: `http://localhost:<PORT>`). This is baked into the Storybook static build at compile time — it cannot be changed without rebuilding the image. Pre-set `WIDGET_API_URL` in the environment to skip this prompt.
+Then asks for the Widget API URL used by client-side widget builds. This should be the server URL browsers will call, for example `https://api.yourprod.com`. You can leave it empty when you want the widget to use relative URLs. This value is baked into the Storybook static build at compile time — changing it requires rebuilding the image.
 
 **5. Generate `.env.prod`**
 
@@ -96,7 +99,7 @@ Runs Drizzle migrations inside a one-off container. If the migration fails, the 
 
 The installer prompts: `Create a workspace now? (Y/n)`.
 
-A workspace binds a widget `workspaceId` to a RAGFlow agent. If you answer **Y**, you are prompted for:
+A workspace binds a widget `workspaceId` to a RAGFlow agent. If you answer **Y**, quick setup prompts only for the required values:
 
 | Prompt | Example | Required |
 | ------ | ------- | -------- |
@@ -104,22 +107,18 @@ A workspace binds a widget `workspaceId` to a RAGFlow agent. If you answer **Y**
 | RAGFlow agent UUID | `550e8400-e29b-41d4-a716-446655440000` | yes |
 | RAGFlow API key | `ragflow-xxxxx` | yes |
 | RAGFlow server URL | `https://ragflow.example.com` | yes |
-| Allowed domains (comma-separated) | `https://acme.com,https://app.acme.com` | no (leave empty to allow all) |
-| Auth mode | `anonymous` | default: `anonymous` |
-| Rate limit — max requests per window | `30` | default: `30` |
-| Rate limit — window duration (ms) | `60000` | default: `60000` |
 
-The workspace is created inside a one-off server container — the API key is encrypted at rest before being stored. The operation is idempotent (safe to re-run with the same workspace ID to update config).
+Quick setup stores `*` as the allowed domains value so the widget can be tested from any origin. It also uses `anonymous` auth, `30` requests per `60000` ms, and encrypts the RAGFlow API key at rest before storing it. The operation is idempotent (safe to re-run with the same workspace ID to update config).
 
 If you skip this step, create a workspace later with:
 
 ```bash
-./scripts/deploy.sh create-workspace \
+agent-toolkit workspace create \
   --id ws_my_project \
   --agent-id 550e8400-e29b-41d4-a716-446655440000 \
   --api-key ragflow-xxxxx \
   --base-url https://ragflow.example.com \
-  --domains "https://acme.com,https://app.acme.com" \
+  --domains "*" \
   --auth-mode anonymous
 ```
 
@@ -160,7 +159,7 @@ cd agent-toolkit   # (or your $AGENT_TOOLKIT_DIR)
 | Prerequisite check fails | Install the missing tool at the version shown and re-run |
 | `git pull` fails during re-install | `cd agent-toolkit && git status` to inspect local changes |
 | Migration warning at install time | Run `./scripts/deploy.sh migrate` after the stack is up |
-| Workspace creation fails | Run `./scripts/deploy.sh create-workspace --help` and create it manually |
+| Workspace creation fails | Run `docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create --help` and create it manually |
 | Server container exits immediately | Run `./scripts/deploy.sh logs` to inspect startup errors — usually a missing or malformed `.env.prod` value |
 | Port already in use | Re-run the installer and choose a different port, or update `PORT` in `.env.prod` and run `./scripts/deploy.sh restart` |
 
@@ -218,10 +217,10 @@ Services start in dependency order: PostgreSQL → Redis → Server. The server 
 
 ### 5. Create a workspace
 
-A workspace is required before the widget can connect. Create one with the deploy script:
+A workspace is required before the widget can connect. Create one with the Agent Toolkit CLI:
 
 ```bash
-./scripts/deploy.sh create-workspace \
+agent-toolkit workspace create \
   --id ws_acme_001 \
   --agent-id 550e8400-e29b-41d4-a716-446655440000 \
   --api-key ragflow-xxxxx \
@@ -257,8 +256,6 @@ curl -I http://localhost:6006/
 | `./scripts/deploy.sh restart` | Rebuild and restart the server only |
 | `./scripts/deploy.sh logs [service]` | Tail logs (default: `server`) |
 | `./scripts/deploy.sh status` | Show containers and health status |
-| `./scripts/deploy.sh create-workspace` | Create or update a workspace (pass `--help` for options) |
-| `./scripts/deploy.sh seed` | Seed the database (development use only) |
 
 ---
 
@@ -357,10 +354,10 @@ cd packages/server && npx drizzle-kit generate
 
 ## Creating a workspace on production
 
-Use the deploy script — it runs against the compiled `dist/` inside the server container and reads `DATABASE_URL` and `ENCRYPTION_KEY` from `.env.prod` automatically:
+Use the Agent Toolkit CLI from inside the production server container. The image exposes both `agent-toolkit` and the shorter `atk` command, and the container already has `DATABASE_URL` and `ENCRYPTION_KEY` in its environment:
 
 ```bash
-./scripts/deploy.sh create-workspace \
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create \
   --id ws_acme_001 \
   --agent-id 550e8400-e29b-41d4-a716-446655440000 \
   --api-key ragflow-xxxxx \
@@ -369,12 +366,10 @@ Use the deploy script — it runs against the compiled `dist/` inside the server
   --auth-mode anonymous
 
 # Show all available flags
-./scripts/deploy.sh create-workspace --help
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create --help
 ```
 
 The API key is encrypted with AES-256 before being stored. Running with the same `--id` updates the existing workspace (upsert).
-
-> **Do not** use `pnpm db:create-workspace` in a production Docker deployment — it requires TypeScript source files and `tsx`, which are not present in the production image.
 
 ---
 

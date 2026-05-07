@@ -15,6 +15,7 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 | ----------------------- | -------------------------------------------------------------------- |
 | `@agent-toolkit/server` | Fastify backend — session management, auth, rate limiting, SSE proxy |
 | `@agent-toolkit/widget` | React hook + drop-in chat component                                  |
+| `@agent-toolkit/cli`    | End-user CLI for workspace, widget, chat, usage, session, and ingest features |
 | `@agent-toolkit/types`  | Shared TypeScript types, enums, and DTOs                             |
 
 ### Tools
@@ -55,6 +56,8 @@ AGENT_TOOLKIT_DIR=my-project curl -fsSL https://raw.githubusercontent.com/NewPin
 git clone <repo-url> && cd agent-toolkit
 pnpm install
 ```
+
+The installer links the CLI as `agent-toolkit ...` and `atk ...`. From a manual source checkout, run `pnpm link --global` once after `pnpm install` to expose the same short commands.
 
 ### 2. Start infrastructure
 
@@ -224,7 +227,7 @@ agent-toolkit/
 │   │   │   │   ├── security/        # AES encryption, JWT tokens, domain validation
 │   │   │   │   └── storage/         # Postgres stores, Redis caches
 │   │   │   ├── config/              # Zod-validated environment configuration
-│   │   │   ├── db/                  # Drizzle ORM schema, migrations, seed script
+│   │   │   ├── db/                  # Drizzle ORM schema and migrations
 │   │   │   ├── factories/           # Object creation (sessions, tokens, workspaces, errors)
 │   │   │   ├── interfaces/          # Port definitions (10 interfaces)
 │   │   │   ├── routes/              # Fastify route handlers (widget, health, embed)
@@ -238,15 +241,16 @@ agent-toolkit/
 │   │   │   ├── embed-loader.ts      # Script-tag auto-init for non-React sites
 │   │   │   └── standalone.tsx       # Self-contained bundle for iframe embed
 │   │   └── .storybook/              # Storybook configuration
+│   ├── cli/                         # @agent-toolkit/cli
+│   │   └── src/                     # End-user CLI commands
 │   └── types/                       # @agent-toolkit/types
 │       └── src/                     # Shared enums, domain models, API DTOs, SSE events
 ├── tools/
 │   └── ragflow_kb_generater/        # Python ingest pipeline (standalone)
 │       ├── config.example.yaml      # Template — copy to config.yaml
 │       ├── requirements.txt
-│       ├── run_all.sh               # End-to-end runner (--test / --full)
+│       ├── scripts/                 # Pipeline step implementations used by the CLI
 │       ├── prompts/                 # VLM & LLM prompt templates
-│       ├── scripts/                 # step1..step6 pipeline scripts + common.py
 │       ├── data/                    # Generated output (CSV, Markdown, PDF)
 │       └── logs/                    # Per-step log files
 ├── docker-compose.yml               # Postgres + Redis + server (dev stack)
@@ -508,20 +512,10 @@ cd packages/server && npx drizzle-kit generate
 cd packages/server && npx drizzle-kit migrate
 ```
 
-### Seeding a Workspace
-
-A seed script provisions a development workspace with an encrypted API key:
+### Workspace CLI
 
 ```bash
-cd packages/server && npx tsx src/db/seed.ts
-```
-
-This creates a workspace `ws_dev_001` pointing to the configured RAGFlow agent. The seed is idempotent — it uses `ON CONFLICT DO UPDATE` so re-running it refreshes the workspace configuration without creating duplicates.
-
-### Creating a Workspace via CLI
-
-```bash
-pnpm db:create-workspace -- \
+agent-toolkit workspace create \
   --id ws_acme_001 \
   --agent-id 550e8400-e29b-41d4-a716-446655440000 \
   --api-key ragflow-xxxxx \
@@ -530,7 +524,41 @@ pnpm db:create-workspace -- \
   --auth-mode anonymous
 ```
 
-The script encrypts the API key automatically and upserts the workspace (safe to re-run). Run with `--help` for all options.
+The CLI encrypts the API key automatically and upserts the workspace (safe to re-run). Common end-user workspace commands:
+
+```bash
+agent-toolkit workspace list
+agent-toolkit workspace get ws_acme_001
+agent-toolkit workspace set-domains ws_acme_001 --domains "https://acme.com,https://app.acme.com"
+agent-toolkit workspace set-rate-limit ws_acme_001 --max-requests 60 --window-ms 60000
+agent-toolkit workspace rotate-api-key ws_acme_001 --api-key ragflow-new-key
+agent-toolkit usage report ws_acme_001
+agent-toolkit sessions list ws_acme_001 --active
+```
+
+In the production Docker image, the CLI is also linked as `agent-toolkit` and `atk` inside the server container:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace list
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace get ws_acme_001
+```
+
+### Widget CLI
+
+```bash
+agent-toolkit widget iframe ws_acme_001 \
+  --api-url https://api.yourdomain.com \
+  --title "Acme Assistant" \
+  --primary-color "#D4775A"
+
+agent-toolkit widget script ws_acme_001 \
+  --api-url https://api.yourdomain.com \
+  --initial-open
+
+agent-toolkit chat ask ws_acme_001 "What can you help with?" \
+  --api-url https://api.yourdomain.com \
+  --origin https://acme.com
+```
 
 ### Database Schema
 
@@ -643,8 +671,9 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp config.example.yaml config.yaml   # fill in API keys
 
-./run_all.sh --test    # dry run with 5 files per step
-./run_all.sh           # full pipeline (interactive checkpoints before upload)
+agent-toolkit ingest run --test --dry-run  # preview the 5-file test pipeline
+agent-toolkit ingest run --test            # run the 5-file test pipeline
+agent-toolkit ingest run                   # run the full pipeline
 ```
 
 **Prerequisites:** Python 3.11+, Google Cloud service account with Drive API enabled, and API keys for VLM/LLM providers configured in `config.yaml`. See `tools/ragflow_kb_generater/README.md` for detailed setup.
