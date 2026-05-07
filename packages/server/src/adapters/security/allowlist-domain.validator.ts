@@ -23,6 +23,8 @@ export class AllowlistDomainValidator implements DomainValidator {
     return allowedDomains.some((domain) => {
       const normalizedDomain = domain.toLowerCase().replace(/\/$/, "");
 
+      if (normalizedDomain === "*") return true;
+
       if (normalizedDomain.startsWith("*.")) {
         const wildcardHost = normalizedDomain.slice(2);
         const originHost = parsedOrigin.hostname;
