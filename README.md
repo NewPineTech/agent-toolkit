@@ -554,6 +554,11 @@ For an interactive full-screen terminal UI that covers the same end-user command
 atk tui
 ```
 
+In the production Docker image:
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk tui
+```
+
 The TUI starts with feature groups such as workspace, widget, chat, usage, sessions, ingest, and validation, then shows the commands inside the selected group. List screens use `↑`/`↓` to move, `Enter` or `→` to select, `←` to go back, and `q` to quit. Form fields keep draft values while users switch with `↑`/`↓`, use `Enter` to review inputs, and use `Esc` to leave the form and return to the parent command list. Secret fields are hidden while confirming inputs, destructive actions require confirmation, and users can run another command without restarting the app.
 
 ### Widget CLI
