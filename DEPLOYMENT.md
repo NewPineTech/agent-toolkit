@@ -10,13 +10,13 @@ The quick installer clones the repo, generates secrets, builds Docker images, ru
 
 ### Prerequisites
 
-| Tool | Min version | Install |
-| ---- | ----------- | ------- |
-| `git` | any | https://git-scm.com |
-| `node` | 20 | https://nodejs.org |
-| `pnpm` | 9 | `npm install -g pnpm` |
-| `docker` | any | https://docs.docker.com/get-docker |
-| `docker compose` | v2 | bundled with Docker Desktop; or `apt install docker-compose-plugin` |
+| Tool             | Min version | Install                                                             |
+| ---------------- | ----------- | ------------------------------------------------------------------- |
+| `git`            | any         | https://git-scm.com                                                 |
+| `node`           | 22          | https://nodejs.org                                                  |
+| `pnpm`           | 9           | `npm install -g pnpm`                                               |
+| `docker`         | any         | https://docs.docker.com/get-docker                                  |
+| `docker compose` | v2          | bundled with Docker Desktop; or `apt install docker-compose-plugin` |
 
 ### Run the installer
 
@@ -26,13 +26,13 @@ curl -fsSL https://raw.githubusercontent.com/NewPineTech/agent-toolkit/main/inst
 
 The installer will prompt for any configuration it needs. You can also pre-set values as environment variables to skip the prompts:
 
-| Variable | Default | What it controls |
-| -------- | ------- | ---------------- |
-| `AGENT_TOOLKIT_DIR` | `agent-toolkit` | Directory to clone the repo into |
-| `WIDGET_API_URL` | empty | Client-facing server URL baked into the Storybook build |
-| `WORKSPACE_AUTH_MODE` | `anonymous` | Workspace auth mode used by quick setup |
-| `WORKSPACE_MAX_REQUESTS` | `30` | Workspace rate-limit max requests |
-| `WORKSPACE_WINDOW_MS` | `60000` | Workspace rate-limit window in ms |
+| Variable                 | Default         | What it controls                                        |
+| ------------------------ | --------------- | ------------------------------------------------------- |
+| `AGENT_TOOLKIT_DIR`      | `agent-toolkit` | Directory to clone the repo into                        |
+| `WIDGET_API_URL`         | empty           | Client-facing server URL baked into the Storybook build |
+| `WORKSPACE_AUTH_MODE`    | `anonymous`     | Workspace auth mode used by quick setup                 |
+| `WORKSPACE_MAX_REQUESTS` | `30`            | Workspace rate-limit max requests                       |
+| `WORKSPACE_WINDOW_MS`    | `60000`         | Workspace rate-limit window in ms                       |
 
 ```bash
 # Example: install into a custom dir, point Storybook at a remote API
@@ -47,7 +47,7 @@ The installer runs the following steps automatically. Understanding them helps i
 
 **1. Prerequisite check**
 
-Verifies `git`, `node ≥ 20`, `pnpm ≥ 9`, `docker`, and `docker compose v2` are all present and meet the minimum version requirements. Exits immediately with an actionable error if any check fails.
+Verifies `git`, `node ≥ 22`, `pnpm ≥ 9`, `docker`, and `docker compose v2` are all present and meet the minimum version requirements. Exits immediately with an actionable error if any check fails.
 
 **2. Clone or update the repository**
 
@@ -69,17 +69,17 @@ Then asks for the Widget API URL used by client-side widget builds. This should 
 
 If `.env.prod` does not exist, it is created from `.env.prod.example` with all three secrets generated automatically:
 
-| Variable | Generated with |
-| -------- | -------------- |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | `openssl rand -hex 32` |
-| `POSTGRES_PASSWORD` | `openssl rand -base64 24` |
+| Variable            | Generated with         |
+| ------------------- | ---------------------- |
+| `JWT_SECRET`        | `openssl rand -hex 32` |
+| `ENCRYPTION_KEY`    | `openssl rand -hex 32` |
+| `POSTGRES_PASSWORD` | `openssl rand -hex 32` |
 
 If `.env.prod` already exists, only `PORT` is updated — existing secrets are preserved.
 
 **6. Build the server and Storybook images**
 
-Runs `docker compose build server` using the production multi-stage `Dockerfile`, then `docker compose build storybook` passing `WIDGET_API_URL` as a Docker build arg. Both builds run sequentially. No cache is used.
+Runs `docker compose build server` using the production multi-stage `Dockerfile`, then `docker compose build storybook` passing `WIDGET_API_URL` as a Docker build arg. The server image builds the workspace packages in dependency order: `types`, `core`, `widget`, `server`, then `cli`.
 
 **7. Start PostgreSQL and Redis**
 
@@ -101,12 +101,12 @@ The installer prompts: `Create a workspace now? (Y/n)`.
 
 A workspace binds a widget `workspaceId` to a RAGFlow agent. If you answer **Y**, quick setup prompts only for the required values:
 
-| Prompt | Example | Required |
-| ------ | ------- | -------- |
-| Workspace ID | `ws_my_project` | yes |
-| RAGFlow agent UUID | `550e8400-e29b-41d4-a716-446655440000` | yes |
-| RAGFlow API key | `ragflow-xxxxx` | yes |
-| RAGFlow server URL | `https://ragflow.example.com` | yes |
+| Prompt             | Example                                | Required |
+| ------------------ | -------------------------------------- | -------- |
+| Workspace ID       | `ws_my_project`                        | yes      |
+| RAGFlow agent UUID | `550e8400-e29b-41d4-a716-446655440000` | yes      |
+| RAGFlow API key    | `ragflow-xxxxx`                        | yes      |
+| RAGFlow server URL | `https://ragflow.example.com`          | yes      |
 
 Quick setup stores `*` as the allowed domains value so the widget can be tested from any origin. It also uses `anonymous` auth, `30` requests per `60000` ms, and encrypts the RAGFlow API key at rest before storing it. The operation is idempotent (safe to re-run with the same workspace ID to update config).
 
@@ -154,14 +154,14 @@ cd agent-toolkit   # (or your $AGENT_TOOLKIT_DIR)
 
 ### Troubleshooting
 
-| Symptom | Fix |
-| ------- | --- |
-| Prerequisite check fails | Install the missing tool at the version shown and re-run |
-| `git pull` fails during re-install | `cd agent-toolkit && git status` to inspect local changes |
-| Migration warning at install time | Run `./scripts/deploy.sh migrate` after the stack is up |
-| Workspace creation fails | Run `docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create --help` and create it manually |
-| Server container exits immediately | Run `./scripts/deploy.sh logs` to inspect startup errors — usually a missing or malformed `.env.prod` value |
-| Port already in use | Re-run the installer and choose a different port, or update `PORT` in `.env.prod` and run `./scripts/deploy.sh restart` |
+| Symptom                            | Fix                                                                                                                                 |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Prerequisite check fails           | Install the missing tool at the version shown and re-run                                                                            |
+| `git pull` fails during re-install | `cd agent-toolkit && git status` to inspect local changes                                                                           |
+| Migration warning at install time  | Run `./scripts/deploy.sh migrate` after the stack is up                                                                             |
+| Workspace creation fails           | Run `docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace create --help` and create it manually |
+| Server container exits immediately | Run `./scripts/deploy.sh logs` to inspect startup errors — usually a missing or malformed `.env.prod` value                         |
+| Port already in use                | Re-run the installer and choose a different port, or update `PORT` in `.env.prod` and run `./scripts/deploy.sh restart`             |
 
 ---
 
@@ -177,11 +177,11 @@ cp .env.prod.example .env.prod
 
 Fill in the required values:
 
-| Variable            | How to generate                |
-| ------------------- | ------------------------------ |
-| `JWT_SECRET`        | `openssl rand -hex 32`         |
-| `ENCRYPTION_KEY`    | `openssl rand -hex 32`         |
-| `POSTGRES_PASSWORD` | `openssl rand -base64 24`      |
+| Variable            | How to generate        |
+| ------------------- | ---------------------- |
+| `JWT_SECRET`        | `openssl rand -hex 32` |
+| `ENCRYPTION_KEY`    | `openssl rand -hex 32` |
+| `POSTGRES_PASSWORD` | `openssl rand -hex 32` |
 
 ### 2. Build the images
 
@@ -247,15 +247,15 @@ curl -I http://localhost:6006/
 
 ## Deploy script reference
 
-| Command | Description |
-| ------- | ----------- |
-| `./scripts/deploy.sh build` | Build server image (no cache) |
-| `./scripts/deploy.sh up` | Start all services (detached) |
-| `./scripts/deploy.sh down` | Stop and remove containers |
-| `./scripts/deploy.sh migrate` | Run pending DB migrations |
-| `./scripts/deploy.sh restart` | Rebuild and restart the server only |
-| `./scripts/deploy.sh logs [service]` | Tail logs (default: `server`) |
-| `./scripts/deploy.sh status` | Show containers and health status |
+| Command                              | Description                         |
+| ------------------------------------ | ----------------------------------- |
+| `./scripts/deploy.sh build`          | Build server image (no cache)       |
+| `./scripts/deploy.sh up`             | Start all services (detached)       |
+| `./scripts/deploy.sh down`           | Stop and remove containers          |
+| `./scripts/deploy.sh migrate`        | Run pending DB migrations           |
+| `./scripts/deploy.sh restart`        | Rebuild and restart the server only |
+| `./scripts/deploy.sh logs [service]` | Tail logs (default: `server`)       |
+| `./scripts/deploy.sh status`         | Show containers and health status   |
 
 ---
 
@@ -377,27 +377,27 @@ The API key is encrypted with AES-256 before being stored. Running with the same
 
 Required variables (must be set in `.env.prod`):
 
-| Variable | Description |
-| -------- | ----------- |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
-| `JWT_SECRET` | HMAC secret for session tokens (min 32 chars) |
-| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (min 32 chars) |
-| `POSTGRES_PASSWORD` | Password for the PostgreSQL user |
+| Variable            | Description                                                            |
+| ------------------- | ---------------------------------------------------------------------- |
+| `DATABASE_URL`      | PostgreSQL connection string                                           |
+| `REDIS_URL`         | Redis connection string                                                |
+| `JWT_SECRET`        | HMAC secret for session tokens (min 32 chars)                          |
+| `ENCRYPTION_KEY`    | AES-256 key for encrypting provider API keys (64-character hex string) |
+| `POSTGRES_PASSWORD` | Password for the PostgreSQL user                                       |
 
 Optional variables (with defaults):
 
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `PORT` | `3000` | Host port exposed by the server container |
-| `HOST` | `0.0.0.0` | Bind address |
-| `POSTGRES_DB` | `agent_toolkit` | PostgreSQL database name |
-| `POSTGRES_USER` | `agent_toolkit` | PostgreSQL username |
-| `LOG_LEVEL` | `info` | `fatal` `error` `warn` `info` `debug` `trace` |
-| `SESSION_TTL_MINUTES` | `30` | Widget session lifetime |
-| `CORS_MAX_AGE` | `86400` | CORS preflight cache (seconds) |
-| `SHUTDOWN_TIMEOUT_MS` | `30000` | Graceful shutdown timeout |
-| `NODE_ENV` | `development` | `development` `production` `test` |
-| `STORYBOOK_PORT` | `6006` | Host port for the Storybook container |
-| `WIDGET_API_URL` | `http://localhost:3000` | API URL baked into the Storybook build |
-| `IMAGE_TAG` | `latest` | Docker image tag applied to built images |
+| Variable              | Default                 | Description                                   |
+| --------------------- | ----------------------- | --------------------------------------------- |
+| `PORT`                | `3000`                  | Host port exposed by the server container     |
+| `HOST`                | `0.0.0.0`               | Bind address                                  |
+| `POSTGRES_DB`         | `agent_toolkit`         | PostgreSQL database name                      |
+| `POSTGRES_USER`       | `agent_toolkit`         | PostgreSQL username                           |
+| `LOG_LEVEL`           | `info`                  | `fatal` `error` `warn` `info` `debug` `trace` |
+| `SESSION_TTL_MINUTES` | `30`                    | Widget session lifetime                       |
+| `CORS_MAX_AGE`        | `86400`                 | CORS preflight cache (seconds)                |
+| `SHUTDOWN_TIMEOUT_MS` | `30000`                 | Graceful shutdown timeout                     |
+| `NODE_ENV`            | `development`           | `development` `production` `test`             |
+| `STORYBOOK_PORT`      | `6006`                  | Host port for the Storybook container         |
+| `WIDGET_API_URL`      | `http://localhost:3000` | API URL baked into the Storybook build        |
+| `IMAGE_TAG`           | `latest`                | Docker image tag applied to built images      |
