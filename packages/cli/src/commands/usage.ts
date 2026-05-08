@@ -1,6 +1,7 @@
 import type { CliContext } from "../context.js";
 import { writeLine } from "../context.js";
 import { createPool } from "../db.js";
+import { withPool } from "./shared.js";
 
 interface RangeOptions {
   from?: string;
@@ -14,27 +15,46 @@ interface UsageRow {
   token_count: number;
 }
 
-export async function runUsageReport(context: CliContext, workspaceId: string, options: RangeOptions) {
+export async function runUsageReport(
+  context: CliContext,
+  workspaceId: string,
+  options: RangeOptions,
+) {
   const rows = await getUsage(workspaceId, options);
   const totalMessages = rows.reduce((sum, row) => sum + row.message_count, 0);
   const totalTokens = rows.reduce((sum, row) => sum + row.token_count, 0);
-  writeLine(context, JSON.stringify({
-    workspaceId,
-    period: { from: options.from ?? null, to: options.to ?? null },
-    totalMessages,
-    totalTokens,
-    daily: rows,
-  }, null, 2));
+  writeLine(
+    context,
+    JSON.stringify(
+      {
+        workspaceId,
+        period: { from: options.from ?? null, to: options.to ?? null },
+        totalMessages,
+        totalTokens,
+        daily: rows,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
-export async function runUsageDaily(context: CliContext, workspaceId: string, options: RangeOptions) {
+export async function runUsageDaily(
+  context: CliContext,
+  workspaceId: string,
+  options: RangeOptions,
+) {
   const rows = await getUsage(workspaceId, options);
   for (const row of rows) {
     writeLine(context, `${row.date}\t${row.message_count}\t${row.token_count}`);
   }
 }
 
-export async function runUsageExport(context: CliContext, workspaceId: string, options: RangeOptions) {
+export async function runUsageExport(
+  context: CliContext,
+  workspaceId: string,
+  options: RangeOptions,
+) {
   const rows = await getUsage(workspaceId, options);
   if (options.format === "json") {
     writeLine(context, JSON.stringify(rows, null, 2));
@@ -46,9 +66,11 @@ export async function runUsageExport(context: CliContext, workspaceId: string, o
   }
 }
 
-async function getUsage(workspaceId: string, options: RangeOptions): Promise<UsageRow[]> {
-  const pool = createPool();
-  try {
+async function getUsage(
+  workspaceId: string,
+  options: RangeOptions,
+): Promise<UsageRow[]> {
+  return withPool(createPool, async (pool) => {
     const conditions = ["workspace_id = $1"];
     const values: string[] = [workspaceId];
     if (options.from) {
@@ -64,7 +86,5 @@ async function getUsage(workspaceId: string, options: RangeOptions): Promise<Usa
       values,
     );
     return result.rows;
-  } finally {
-    await pool.end();
-  }
+  });
 }

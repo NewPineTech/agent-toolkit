@@ -4,7 +4,10 @@ import { writeLine } from "../context.js";
 export function runConfigValidate(context: CliContext) {
   const checks = [
     ["DATABASE_URL", Boolean(process.env["DATABASE_URL"])],
-    ["ENCRYPTION_KEY", /^[a-fA-F0-9]{64}$/.test(process.env["ENCRYPTION_KEY"] ?? "")],
+    [
+      "ENCRYPTION_KEY",
+      /^[a-fA-F0-9]{64}$/.test(process.env["ENCRYPTION_KEY"] ?? ""),
+    ],
   ] as const;
   let ok = true;
   for (const [name, passed] of checks) {

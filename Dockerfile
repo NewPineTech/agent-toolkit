@@ -5,6 +5,7 @@ WORKDIR /app
 FROM base AS deps
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc ./
 COPY packages/types/package.json packages/types/
+COPY packages/core/package.json packages/core/
 COPY packages/widget/package.json packages/widget/
 COPY packages/server/package.json packages/server/
 COPY packages/cli/package.json packages/cli/
@@ -14,10 +15,12 @@ RUN pnpm install --frozen-lockfile --prod=false
 FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/types/ packages/types/
+COPY packages/core/ packages/core/
 COPY packages/widget/ packages/widget/
 COPY packages/server/ packages/server/
 COPY packages/cli/ packages/cli/
 RUN pnpm --filter @agent-toolkit/types run build \
+ && pnpm --filter @agent-toolkit/core run build \
  && pnpm --filter @agent-toolkit/widget run build \
  && pnpm --filter @agent-toolkit/server run build \
  && pnpm --filter @agent-toolkit/cli run build
@@ -32,9 +35,12 @@ WORKDIR /app
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/packages/server/node_modules ./packages/server/node_modules
 COPY --from=prod-deps /app/packages/types/node_modules ./packages/types/node_modules
+COPY --from=prod-deps /app/packages/core/node_modules ./packages/core/node_modules
 COPY --from=prod-deps /app/packages/cli/node_modules ./packages/cli/node_modules
 COPY --from=build /app/packages/types/dist ./packages/types/dist
 COPY --from=build /app/packages/types/package.json ./packages/types/
+COPY --from=build /app/packages/core/dist ./packages/core/dist
+COPY --from=build /app/packages/core/package.json ./packages/core/
 COPY --from=build /app/packages/server/dist ./packages/server/dist
 COPY --from=build /app/packages/cli/dist ./packages/cli/dist
 COPY --from=build /app/packages/cli/bin ./packages/cli/bin

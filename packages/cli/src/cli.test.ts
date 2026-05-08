@@ -67,7 +67,7 @@ describe("agent-toolkit cli", () => {
     expect(result.stdout).toContain(
       "https://api.example.com/widget/embed?workspaceId=ws_acme",
     );
-    expect(result.stdout).toContain("title=\"Acme Assistant\"");
+    expect(result.stdout).toContain('title="Acme Assistant"');
     expect(result.stdout).toContain("primaryColor=%23D4775A");
   });
 
@@ -84,25 +84,38 @@ describe("agent-toolkit cli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("<script");
     expect(result.stdout).toContain(
-      "src=\"https://api.example.com/widget/widget.js\"",
+      'src="https://api.example.com/widget/widget.js"',
     );
-    expect(result.stdout).toContain("data-workspace-id=\"ws_acme\"");
-    expect(result.stdout).toContain("data-initial-open=\"true\"");
+    expect(result.stdout).toContain('data-workspace-id="ws_acme"');
+    expect(result.stdout).toContain('data-initial-open="true"');
   });
 
   it("maps ingest run test mode to python steps without shell scripts", async () => {
     const result = await runCli(["ingest", "run", "--test", "--dry-run"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("python scripts/step1_inventory.py");
-    expect(result.stdout).toContain("python scripts/step2_ocr_sop.py --limit 5");
+    expect(result.stdout).toContain("scripts/step1_inventory.py");
+    expect(result.stdout).toContain("scripts/step2_ocr_sop.py --limit 5");
+    expect(result.stdout).toContain("scripts/step3_form_cards.py --limit 5");
     expect(result.stdout).toContain(
-      "python scripts/step3_form_cards.py --limit 5",
-    );
-    expect(result.stdout).toContain(
-      "python scripts/step4_create_kbs.py --skip-existing",
+      "scripts/step4_create_kbs.py --skip-existing",
     );
     expect(result.stdout).not.toContain("run_all.sh");
+  });
+
+  it("passes root folder overrides through ingest run inventory", async () => {
+    const result = await runCli([
+      "ingest",
+      "run",
+      "--root-folder-id",
+      "drive-folder-123",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      "scripts/step1_inventory.py --root-folder-id drive-folder-123",
+    );
   });
 
   it("documents new user-facing feature commands", async () => {

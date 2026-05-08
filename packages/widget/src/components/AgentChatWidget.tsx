@@ -223,7 +223,7 @@ function ChatPanel(props: {
     greeting,
     suggestions = [
       "Tôi cần hướng dẫn bắt đầu",
-      "Thanh toán hoạt động như thế nào?",
+      "Quy trình tuyển dụng gồm các bước nào?",
       "Tôi có một câu hỏi",
     ],
     botName,

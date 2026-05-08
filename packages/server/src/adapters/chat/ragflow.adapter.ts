@@ -1,4 +1,8 @@
 import type { ChatStreamEvent } from "@agent-toolkit/types";
+import {
+  buildRagflowAgentUrl,
+  createRagflowSessionRequest,
+} from "@agent-toolkit/core";
 import type {
   ChatProvider,
   ChatProviderConfig,
@@ -9,16 +13,9 @@ export class RagflowAdapter implements ChatProvider {
   constructor(private readonly logger: Logger) {}
 
   async createSession(config: ChatProviderConfig): Promise<string> {
-    const url = `${config.baseUrl}/api/v1/agents/${config.agentId}/sessions`;
+    const request = createRagflowSessionRequest(config);
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({}),
-    });
+    const response = await fetch(request.url, request.init);
 
     if (!response.ok) {
       const body = await response.text().catch(() => "unknown");
@@ -46,7 +43,11 @@ export class RagflowAdapter implements ChatProvider {
     sessionId: string,
     message: string,
   ): AsyncGenerator<ChatStreamEvent, void, undefined> {
-    const url = `${config.baseUrl}/api/v1/agents/${config.agentId}/completions`;
+    const url = buildRagflowAgentUrl(
+      config.baseUrl,
+      config.agentId,
+      "completions",
+    );
 
     const response = await fetch(url, {
       method: "POST",

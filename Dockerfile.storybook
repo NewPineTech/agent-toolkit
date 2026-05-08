@@ -5,6 +5,7 @@ WORKDIR /app
 FROM base AS deps
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc* ./
 COPY packages/types/package.json packages/types/
+COPY packages/core/package.json packages/core/
 COPY packages/widget/package.json packages/widget/
 RUN pnpm install --frozen-lockfile --prod=false
 
@@ -13,8 +14,10 @@ ARG WIDGET_API_URL
 ENV WIDGET_API_URL=$WIDGET_API_URL
 COPY tsconfig.base.json ./
 COPY packages/types/ packages/types/
+COPY packages/core/ packages/core/
 COPY packages/widget/ packages/widget/
 RUN pnpm --filter @agent-toolkit/types run build \
+ && pnpm --filter @agent-toolkit/core run build \
  && pnpm --filter @agent-toolkit/widget run build \
  && pnpm --filter @agent-toolkit/widget run build-storybook
 

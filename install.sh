@@ -90,11 +90,11 @@ check_version() {
 info "Checking prerequisites..."
 
 check_command git       "Install from https://git-scm.com"
-check_command node      "Install from https://nodejs.org (>= 20)"
+check_command node      "Install from https://nodejs.org (>= 22)"
 check_command pnpm      "Install with: npm install -g pnpm"
 check_command docker    "Install from https://docs.docker.com/get-docker"
 
-check_version node 20.0 "Install from https://nodejs.org"
+check_version node 22.0 "Install from https://nodejs.org"
 check_version pnpm 9.0  "Upgrade with: npm install -g pnpm@latest"
 
 if ! docker compose version &>/dev/null && ! docker-compose version &>/dev/null; then

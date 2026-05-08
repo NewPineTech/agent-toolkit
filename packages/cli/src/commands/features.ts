@@ -24,6 +24,7 @@ const currentCommands = [
   "sessions list",
   "sessions get",
   "sessions expire",
+  "ingest setup",
   "ingest run",
   "ingest inventory",
   "ingest ocr-sop",
@@ -51,5 +52,6 @@ export function runFeatures(context: CliContext) {
   for (const command of currentCommands) writeLine(context, `  - ${command}`);
   writeLine(context);
   writeLine(context, "Next CLI-friendly product features:");
-  for (const command of recommendedCommands) writeLine(context, `  - ${command}`);
+  for (const command of recommendedCommands)
+    writeLine(context, `  - ${command}`);
 }

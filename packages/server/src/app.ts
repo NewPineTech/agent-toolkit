@@ -5,14 +5,16 @@ import { asClass, asFunction, asValue, Lifetime } from "awilix";
 import { Redis } from "ioredis";
 import type { Config } from "./config/env.js";
 import { createDatabase } from "./db/connection.js";
+import {
+  AesEncryptionService,
+  AllowlistDomainValidator,
+} from "@agent-toolkit/core";
 
 import { CompositeHealthChecker } from "./adapters/infra/composite-health.checker.js";
 import { healthRoutes } from "./routes/health.routes.js";
 import { widgetRoutes } from "./routes/widget.routes.js";
 import { embedRoute } from "./routes/embed.route.js";
-import { AesEncryptionService } from "./adapters/security/aes-encryption.service.js";
 import { JwtTokenService } from "./adapters/security/jwt-token.service.js";
-import { AllowlistDomainValidator } from "./adapters/security/allowlist-domain.validator.js";
 import { PostgresSessionStore } from "./adapters/storage/postgres-session.store.js";
 import { PostgresUsageTracker } from "./adapters/storage/postgres-usage.tracker.js";
 import { RedisSessionCache } from "./adapters/storage/redis-session.cache.js";

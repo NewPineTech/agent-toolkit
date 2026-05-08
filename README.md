@@ -11,12 +11,13 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 
 ## Packages
 
-| Package                 | Description                                                          |
-| ----------------------- | -------------------------------------------------------------------- |
-| `@agent-toolkit/server` | Fastify backend — session management, auth, rate limiting, SSE proxy |
-| `@agent-toolkit/widget` | React hook + drop-in chat component                                  |
-| `@agent-toolkit/cli`    | End-user CLI for workspace, widget, chat, usage, session, and ingest features |
-| `@agent-toolkit/types`  | Shared TypeScript types, enums, and DTOs                             |
+| Package                 | Description                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `@agent-toolkit/core`   | Runtime-independent shared logic for validation, encryption, provider URLs, and embed templates |
+| `@agent-toolkit/server` | Fastify backend — session management, auth, rate limiting, SSE proxy                            |
+| `@agent-toolkit/widget` | React hook + drop-in chat component                                                             |
+| `@agent-toolkit/cli`    | End-user CLI for workspace, widget, chat, usage, session, and ingest features                   |
+| `@agent-toolkit/types`  | Shared TypeScript types, enums, and DTOs                                                        |
 
 ### Tools
 
@@ -28,7 +29,7 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 
 ### Prerequisites
 
-- Node.js >= 20
+- Node.js >= 22
 - pnpm >= 9
 - PostgreSQL 15+
 - Redis 7+
@@ -74,12 +75,12 @@ cp .env.example .env
 
 Required variables:
 
-| Variable         | Description                                                 |
-| ---------------- | ----------------------------------------------------------- |
-| `DATABASE_URL`   | PostgreSQL connection string                                |
-| `REDIS_URL`      | Redis connection string                                     |
-| `JWT_SECRET`     | HMAC secret for session tokens (min 32 chars)               |
-| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (min 32 chars) |
+| Variable         | Description                                                            |
+| ---------------- | ---------------------------------------------------------------------- |
+| `DATABASE_URL`   | PostgreSQL connection string                                           |
+| `REDIS_URL`      | Redis connection string                                                |
+| `JWT_SECRET`     | HMAC secret for session tokens (min 32 chars)                          |
+| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (64-character hex string) |
 
 Optional variables (with defaults):
 
@@ -125,15 +126,13 @@ function App() {
 
 **Option A — Direct iframe tag:**
 
-```html
-<iframe
-  src="https://api.yourdomain.com/widget/embed?workspaceId=ws_abc123"
-  width="400"
-  height="600"
-  style="border:none;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"
-  title="Chat Widget"
-></iframe>
-```
+````html
+Use the CLI so the iframe markup stays aligned with the shared embed template:
+```bash agent-toolkit widget iframe ws_abc123 --api-url
+https://api.yourdomain.com
+````
+
+````
 
 **Option B — Script tag (auto-init):**
 
@@ -145,7 +144,7 @@ function App() {
   data-width="400px"
   data-height="600px"
 ></script>
-```
+````
 
 **Option C — Programmatic:**
 
@@ -167,7 +166,7 @@ import { getEmbedSnippet } from "@agent-toolkit/widget/embed";
 const html = getEmbedSnippet({
   workspaceId: "ws_abc123",
 });
-// Returns: <iframe src="..." width="400px" height="600px" ...></iframe>
+// Returns the same shared resize snippet template used by the CLI.
 ```
 
 #### Embed query parameters
@@ -243,6 +242,8 @@ agent-toolkit/
 │   │   └── .storybook/              # Storybook configuration
 │   ├── cli/                         # @agent-toolkit/cli
 │   │   └── src/                     # End-user CLI commands
+│   ├── core/                        # @agent-toolkit/core
+│   │   └── src/                     # Shared runtime logic used by CLI, server, and widget
 │   └── types/                       # @agent-toolkit/types
 │       └── src/                     # Shared enums, domain models, API DTOs, SSE events
 ├── tools/
@@ -275,6 +276,10 @@ workspaces table
 
 **Authenticated** — The customer's backend signs a JWT with a shared HMAC secret. The widget sends this token alongside the `workspaceId`. The server verifies the signature before issuing a session token. This prevents user impersonation (similar to Intercom Identity Verification).
 
+### Shared Core + Adapter Pattern
+
+Runtime-independent rules live in `@agent-toolkit/core` and are reused by the server, CLI, and widget package. This keeps domain allowlist validation, AES-GCM encryption, RAGFlow provider URL construction, workspace option parsing, widget embed URL generation, and iframe/snippet templates consistent across entrypoints.
+
 ### Adapter + Factory Pattern
 
 All external dependencies sit behind interfaces. Every complex object is created through a factory.
@@ -290,8 +295,8 @@ UsageTracker          ───► PostgresUsageTracker            ErrorResponse
 RateLimiter           ───► RedisRateLimiter
                            InMemoryRateLimiter
 TokenService          ───► JwtTokenService
-EncryptionService     ───► AesEncryptionService
-DomainValidator       ───► AllowlistDomainValidator
+EncryptionService     ───► AesEncryptionService (@agent-toolkit/core)
+DomainValidator       ───► AllowlistDomainValidator (@agent-toolkit/core)
 Logger                ───► PinoLoggerAdapter
 HealthChecker         ───► CompositeHealthChecker
 ```

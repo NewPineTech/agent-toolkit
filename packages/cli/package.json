@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@agent-toolkit/core": "workspace:*",
     "commander": "^14.0.2",
     "pg": "^8.13.0"
   },

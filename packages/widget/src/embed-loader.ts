@@ -1,3 +1,4 @@
+import { renderWidgetSnippet } from "@agent-toolkit/core/widget";
 import { getApiUrl } from "./config.js";
 
 export interface EmbedConfig {
@@ -154,29 +155,14 @@ export function buildEmbedUrl(config: EmbedConfig): string {
 
 export function getEmbedSnippet(config: EmbedConfig): string {
   const url = buildEmbedUrl(config);
-  const title = config.title ?? "Chat Widget";
-  const isRight = config.theme?.position !== "bottom-left";
-
   const expectedOrigin = getUrlOrigin(url);
 
-  return `<!-- Agent Toolkit Chat Widget -->
-<iframe
-  id="agent-toolkit-chat"
-  src="${url}"
-  style="border:none;position:fixed;bottom:0;${isRight ? "right" : "left"}:0;width:100%;height:100%;z-index:99999;background:transparent"
-  allow="clipboard-write"
-  allowtransparency="true"
-  title="${title}"
-></iframe>
-<script>
-window.addEventListener('message',function(e){
-  if(e.origin!=='${expectedOrigin}')return;
-  if(e.data&&e.data.source==='agent-toolkit-widget'&&e.data.size){
-    var f=document.getElementById('agent-toolkit-chat');
-    if(f){f.style.width=e.data.size.width+'px';f.style.height=e.data.size.height+'px'}
-  }
-});
-</script>`;
+  return renderWidgetSnippet({
+    url,
+    title: config.title,
+    expectedOrigin,
+    position: config.theme?.position,
+  });
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
