@@ -38,11 +38,13 @@ import {
   runWidgetTest,
 } from "./commands/widget.js";
 import type { CliContext } from "./context.js";
+import { runTui } from "./tui/index.js";
 
 export interface CliProgramOptions {
   stdout?: (message: string) => void;
   stderr?: (message: string) => void;
   exitOverride?: (code: number) => never;
+  runTui?: (context: CliContext) => void | Promise<void>;
 }
 
 export function createCliProgram(options: CliProgramOptions = {}): Command {
@@ -74,6 +76,11 @@ export function createCliProgram(options: CliProgramOptions = {}): Command {
     .command("features")
     .description("Show current and recommended user-facing CLI features")
     .action(() => runFeatures(context));
+
+  program
+    .command("tui")
+    .description("Open the full-screen interactive terminal UI")
+    .action(() => options.runTui?.(context) ?? runTui());
 
   addWorkspaceCommands(program, context);
   addWidgetCommands(program, context);
