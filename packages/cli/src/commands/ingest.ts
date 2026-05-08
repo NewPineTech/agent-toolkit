@@ -39,16 +39,29 @@ export async function runIngestPipeline(
   options: IngestOptions,
 ) {
   const limit = options.test ? "5" : undefined;
+  const toolDir = resolveToolDir();
   const commands: string[][] = [
-    buildIngestArgs("inventory", {}),
-    buildIngestArgs("ocr-sop", { limit }),
-    buildIngestArgs("form-cards", { limit }),
-    buildIngestArgs("kb-create", { skipExisting: true }),
-    buildIngestArgs("upload", { kb: "sop_kb", format: options.format ?? "md" }),
-    buildIngestArgs("upload", {
-      kb: "forms_kb",
-      format: options.format ?? "md",
-    }),
+    buildIngestArgs(
+      "inventory",
+      { rootFolderId: options.rootFolderId },
+      toolDir,
+    ),
+    buildIngestArgs("ocr-sop", { limit }, toolDir),
+    buildIngestArgs("form-cards", { limit }, toolDir),
+    buildIngestArgs("kb-create", { skipExisting: true }, toolDir),
+    buildIngestArgs(
+      "upload",
+      { kb: "sop_kb", format: options.format ?? "md" },
+      toolDir,
+    ),
+    buildIngestArgs(
+      "upload",
+      {
+        kb: "forms_kb",
+        format: options.format ?? "md",
+      },
+      toolDir,
+    ),
   ];
 
   if (options.dryRun) {
@@ -56,8 +69,9 @@ export async function runIngestPipeline(
     return;
   }
 
+  ensureIngestEnvironment(toolDir);
   for (const command of commands) {
-    await runProcess(context, command);
+    await runProcess(context, command, toolDir);
   }
 }
 
@@ -66,16 +80,39 @@ export async function runIngestCommand(
   name: IngestName,
   options: IngestOptions,
 ) {
-  const command = buildIngestArgs(name, options);
+  const toolDir = resolveToolDir();
+  const command = buildIngestArgs(name, options, toolDir);
   if (options.dryRun) {
     writeLine(context, command.join(" "));
     return;
   }
-  await runProcess(context, command);
+  ensureIngestEnvironment(toolDir);
+  await runProcess(context, command, toolDir);
 }
 
-function buildIngestArgs(name: IngestName, options: IngestOptions): string[] {
-  const args = [resolvePythonCommand(), scriptFor(name)];
+export async function runIngestSetup(context: CliContext) {
+  const toolDir = resolveToolDir();
+  const setupPython = resolveSetupPythonCommand();
+  await runProcess(context, [setupPython, "-m", "venv", ".venv"], toolDir);
+  const venvPython = getVenvPythonPath(toolDir);
+  await runProcess(
+    context,
+    [venvPython, "-m", "pip", "install", "--upgrade", "pip"],
+    toolDir,
+  );
+  await runProcess(
+    context,
+    [venvPython, "-m", "pip", "install", "-r", "requirements.txt"],
+    toolDir,
+  );
+}
+
+export function buildIngestArgs(
+  name: IngestName,
+  options: IngestOptions,
+  toolDir = resolveToolDir(),
+): string[] {
+  const args = [getVenvPythonPath(toolDir), scriptFor(name)];
   if (options.rootFolderId) args.push("--root-folder-id", options.rootFolderId);
   if (options.limit) args.push("--limit", options.limit);
   if (options.resume) args.push("--resume");
@@ -89,7 +126,12 @@ function buildIngestArgs(name: IngestName, options: IngestOptions): string[] {
   return args;
 }
 
-export function resolveToolDir(cwd = process.cwd()): string {
+export function resolveToolDir(
+  cwd = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configured = env["AGENT_TOOLKIT_INGEST_DIR"]?.trim();
+  if (configured) return configured;
   const cwdToolDir = join(cwd, "tools", "ragflow_kb_generater");
   if (existsSync(cwdToolDir)) return cwdToolDir;
   if (existsSync(packageRelativeToolDir)) return packageRelativeToolDir;
@@ -98,7 +140,15 @@ export function resolveToolDir(cwd = process.cwd()): string {
   );
 }
 
-export function resolvePythonCommand(env = process.env): string {
+export function getVenvPythonPath(toolDir: string): string {
+  const executable =
+    process.platform === "win32"
+      ? join(".venv", "Scripts", "python.exe")
+      : join(".venv", "bin", "python");
+  return join(toolDir, executable);
+}
+
+export function resolveSetupPythonCommand(env = process.env): string {
   const configured = env["AGENT_TOOLKIT_PYTHON"]?.trim();
   if (configured) return configured;
   if (commandExists("python", env)) return "python";
@@ -112,6 +162,72 @@ function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
   const probe = spawnSync(command, ["--version"], { env, stdio: "ignore" });
   return probe.status === 0 && !probe.error;
 }
+
+function ensureIngestEnvironment(toolDir: string) {
+  const venvPython = getVenvPythonPath(toolDir);
+  if (!existsSync(venvPython)) {
+    throw new Error(
+      `RAGFlow ingest .venv is not ready at ${join(toolDir, ".venv")}. Run: agent-toolkit ingest setup`,
+    );
+  }
+
+  const requirementsPath = join(toolDir, "requirements.txt");
+  if (!existsSync(requirementsPath)) {
+    throw new Error(
+      `RAGFlow ingest requirements.txt not found at ${requirementsPath}.`,
+    );
+  }
+
+  const check = spawnSync(
+    venvPython,
+    ["-c", REQUIREMENTS_CHECK_SCRIPT, requirementsPath],
+    {
+      cwd: toolDir,
+      encoding: "utf8",
+    },
+  );
+  if (check.status !== 0) {
+    const detail = [check.stdout, check.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(
+      `RAGFlow ingest Python requirements are missing or outdated. Run: agent-toolkit ingest setup${detail ? `\n${detail}` : ""}`,
+    );
+  }
+}
+
+const REQUIREMENTS_CHECK_SCRIPT = String.raw`
+import sys
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    from pip._vendor.packaging.requirements import Requirement
+except Exception as exc:
+    print(f"pip requirement parser unavailable: {exc}", file=sys.stderr)
+    sys.exit(1)
+
+missing = []
+for raw_line in open(sys.argv[1], encoding="utf-8"):
+    line = raw_line.split("#", 1)[0].strip()
+    if not line or line.startswith(("-", "http:", "https:", "git+")):
+        continue
+    try:
+        req = Requirement(line)
+        installed = version(req.name)
+    except PackageNotFoundError:
+        missing.append(req.name)
+        continue
+    except Exception as exc:
+        missing.append(f"{line} ({exc})")
+        continue
+    if req.specifier and not req.specifier.contains(installed, prereleases=True):
+        missing.append(f"{req.name}{req.specifier} (installed {installed})")
+
+if missing:
+    print("Missing/outdated packages: " + ", ".join(missing), file=sys.stderr)
+    sys.exit(1)
+`;
 
 function scriptFor(name: IngestName): string {
   switch (name) {
@@ -132,7 +248,11 @@ function scriptFor(name: IngestName): string {
   }
 }
 
-function runProcess(context: CliContext, command: string[]): Promise<void> {
+function runProcess(
+  context: CliContext,
+  command: string[],
+  cwd = process.env["AGENT_TOOLKIT_INGEST_DIR"] ?? resolveToolDir(),
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const [executable, ...args] = command;
     if (!executable) {
@@ -141,7 +261,7 @@ function runProcess(context: CliContext, command: string[]): Promise<void> {
     }
     writeLine(context, `$ ${command.join(" ")}`);
     const child = spawn(executable, args, {
-      cwd: process.env["AGENT_TOOLKIT_INGEST_DIR"] ?? resolveToolDir(),
+      cwd,
       stdio: ["inherit", "pipe", "pipe"],
     });
     child.stdout.on("data", (chunk: Buffer) =>

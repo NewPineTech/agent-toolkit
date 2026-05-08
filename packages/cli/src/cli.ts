@@ -3,7 +3,11 @@ import { runChatAsk, runChatSessionCreate } from "./commands/chat.js";
 import { runConfigValidate } from "./commands/config.js";
 import { runDomainTest } from "./commands/domain.js";
 import { runFeatures } from "./commands/features.js";
-import { runIngestCommand, runIngestPipeline } from "./commands/ingest.js";
+import {
+  runIngestCommand,
+  runIngestPipeline,
+  runIngestSetup,
+} from "./commands/ingest.js";
 import { runProviderTest } from "./commands/provider.js";
 import {
   runSessionExpire,
@@ -261,8 +265,16 @@ function addIngestCommands(program: Command, context: CliContext) {
     .command("ingest")
     .description("Run RAGFlow knowledge-base ingest features");
   ingest
+    .command("setup")
+    .description("Create .venv and install RAGFlow ingest requirements")
+    .action(() => runIngestSetup(context));
+  ingest
     .command("run")
     .option("--test", "Use a limit of 5 records per expensive step")
+    .option(
+      "--root-folder-id <id>",
+      "Override Drive root folder ID for inventory",
+    )
     .option("--format <format>", "Upload format: md | pdf | both", "md")
     .option("--dry-run", "Print commands without running them")
     .action((opts) => runIngestPipeline(context, opts));

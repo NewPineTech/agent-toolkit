@@ -103,6 +103,21 @@ describe("agent-toolkit cli", () => {
     expect(result.stdout).not.toContain("run_all.sh");
   });
 
+  it("passes root folder overrides through ingest run inventory", async () => {
+    const result = await runCli([
+      "ingest",
+      "run",
+      "--root-folder-id",
+      "drive-folder-123",
+      "--dry-run",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      "scripts/step1_inventory.py --root-folder-id drive-folder-123",
+    );
+  });
+
   it("documents new user-facing feature commands", async () => {
     const result = await runCli(["features"]);
 

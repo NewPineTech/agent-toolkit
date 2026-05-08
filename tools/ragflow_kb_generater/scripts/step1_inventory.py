@@ -44,6 +44,25 @@ from common import (
 logger = setup_logger("step1_inventory", "step1_inventory.log")
 
 
+class DriveFolderScanError(RuntimeError):
+    """Raised when Google Drive folder scanning cannot continue."""
+
+
+def format_drive_scan_error(folder_id: str, path_parts: list[str], error: Exception) -> str:
+    path = "/".join(path_parts) if path_parts else "<root>"
+    return (
+        f"Cannot scan Google Drive folder '{folder_id}' at path '{path}'.\n"
+        "Check that:\n"
+        "  1. The root_folder_id is correct for this run. You can override it with "
+        "`agent-toolkit ingest run --root-folder-id <folder_id>` or "
+        "`agent-toolkit ingest inventory --root-folder-id <folder_id>`.\n"
+        "  2. The configured service account JSON has Viewer access to this folder "
+        "or shared drive.\n"
+        "  3. Google Drive API is enabled and the folder has not been deleted.\n"
+        f"Original error: {error}"
+    )
+
+
 def crawl_recursive(service, folder_id: str, path_parts: list[str]) -> list[dict]:
     """
     Recursive crawl: 1 folder → list all files (DFS).
@@ -53,8 +72,9 @@ def crawl_recursive(service, folder_id: str, path_parts: list[str]) -> list[dict
     try:
         items = gdrive_list_folder(service, folder_id)
     except Exception as e:
-        logger.error(f"Failed to list folder {folder_id} ({'/'.join(path_parts)}): {e}")
-        return results
+        message = format_drive_scan_error(folder_id, path_parts, e)
+        logger.error(message)
+        raise DriveFolderScanError(message) from e
 
     for item in items:
         item_name = item["name"]

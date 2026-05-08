@@ -32,28 +32,25 @@ ragflow_kb_generater/
 
 ## Cài đặt
 
+> Bản cài đặt gọi trực tiếp `agent-toolkit ...` hoặc `atk ...`. Nếu chạy từ source checkout thủ công, chạy `pnpm link --global` một lần sau `pnpm install`.
+
 ```bash
-# 1. Tạo virtualenv
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# hoặc: venv\Scripts\activate  # Windows
+# 1. Tạo .venv và cài Python requirements cho pipeline
+agent-toolkit ingest setup
 
-# 2. Cài deps
-pip install -r requirements.txt
-
-# 3. Setup config
+# 2. Setup config
 cp config.example.yaml config.yaml
 # Điền vào config.yaml: GOOGLE_SERVICE_ACCOUNT_JSON, GEMINI_API_KEY,
 # OPENAI_API_KEY, RAGFLOW_API_URL, RAGFLOW_API_KEY, DRIVE_ROOT_FOLDER_ID
 
-# 4. Setup Google Drive Service Account
+# 3. Setup Google Drive Service Account
 # - Vào https://console.cloud.google.com → tạo project mới
 # - Enable Google Drive API
 # - Tạo Service Account, download JSON credentials
 # - Share Drive folder cho email service account (quyền Viewer)
 # - Set GOOGLE_SERVICE_ACCOUNT_JSON trong config.yaml = path tới file JSON
 
-# 5. (Optional) Setup WeasyPrint system deps (chỉ cần nếu dùng Step 3.5 PDF)
+# 4. (Optional) Setup WeasyPrint system deps (chỉ cần nếu dùng Step 3.5 PDF)
 # macOS:
 brew install pango libffi cairo gdk-pixbuf
 # Ubuntu/Debian:
@@ -61,15 +58,16 @@ sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
 # Windows: WeasyPrint cài sẵn trên Windows không cần extra deps
 ```
 
-## Chạy pipeline
+Các lệnh `agent-toolkit ingest ...` luôn chạy Python qua `.venv` trong thư mục tool này. Nếu `.venv` chưa tồn tại hoặc `requirements.txt` chưa được cài đủ phiên bản tối thiểu, CLI sẽ dừng và yêu cầu chạy `agent-toolkit ingest setup` trước.
 
-> Bản cài đặt gọi trực tiếp `agent-toolkit ...` hoặc `atk ...`. Nếu chạy từ source checkout thủ công, chạy `pnpm link --global` một lần sau `pnpm install`.
+## Chạy pipeline
 
 ```bash
 # Chạy qua Agent Toolkit CLI, không gọi shell script trực tiếp
 agent-toolkit ingest run              # full mode
 agent-toolkit ingest run --test       # test mode (5 file đầu mỗi step)
 agent-toolkit ingest run --dry-run    # preview các lệnh Python sẽ chạy
+agent-toolkit ingest run --root-folder-id <folder_id>  # override Drive folder cho lần chạy này
 ```
 
 ### Chạy từng step
@@ -77,6 +75,7 @@ agent-toolkit ingest run --dry-run    # preview các lệnh Python sẽ chạy
 ```bash
 # Step 1: Crawl Drive folder → inventory CSV
 agent-toolkit ingest inventory
+agent-toolkit ingest inventory --root-folder-id <folder_id>
 
 # Step 2: OCR PNG lưu đồ → Markdown SOP
 # Gemini: tự động dùng batch mode (async concurrent, nhanh ~4x)
@@ -106,6 +105,8 @@ agent-toolkit ingest upload --kb forms_kb --format pdf
 agent-toolkit ingest test --kb sop_kb
 agent-toolkit ingest test --kb forms_kb
 ```
+
+`google_drive.root_folder_id` trong `config.yaml` chỉ là default. Khi cần ingest folder khác, truyền `--root-folder-id` cho `ingest run` hoặc `ingest inventory`; giá trị này chỉ áp dụng cho lần chạy đó và không sửa config. Nếu folder ID sai, service account chưa được share quyền Viewer, shared drive chưa cấp quyền, hoặc Drive API trả lỗi khi quét, Step 1 sẽ dừng với hướng dẫn kiểm tra quyền và cách override folder ID.
 
 ## Chi phí ước tính
 

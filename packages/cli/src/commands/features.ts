@@ -24,6 +24,7 @@ const currentCommands = [
   "sessions list",
   "sessions get",
   "sessions expire",
+  "ingest setup",
   "ingest run",
   "ingest inventory",
   "ingest ocr-sop",
