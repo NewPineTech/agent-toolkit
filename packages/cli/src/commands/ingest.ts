@@ -34,7 +34,10 @@ const packageRelativeToolDir = resolve(
   "../../../../tools/ragflow_kb_generater",
 );
 
-export async function runIngestPipeline(context: CliContext, options: IngestOptions) {
+export async function runIngestPipeline(
+  context: CliContext,
+  options: IngestOptions,
+) {
   const limit = options.test ? "5" : undefined;
   const commands: string[][] = [
     buildIngestArgs("inventory", {}),
@@ -42,7 +45,10 @@ export async function runIngestPipeline(context: CliContext, options: IngestOpti
     buildIngestArgs("form-cards", { limit }),
     buildIngestArgs("kb-create", { skipExisting: true }),
     buildIngestArgs("upload", { kb: "sop_kb", format: options.format ?? "md" }),
-    buildIngestArgs("upload", { kb: "forms_kb", format: options.format ?? "md" }),
+    buildIngestArgs("upload", {
+      kb: "forms_kb",
+      format: options.format ?? "md",
+    }),
   ];
 
   if (options.dryRun) {
@@ -55,7 +61,11 @@ export async function runIngestPipeline(context: CliContext, options: IngestOpti
   }
 }
 
-export async function runIngestCommand(context: CliContext, name: IngestName, options: IngestOptions) {
+export async function runIngestCommand(
+  context: CliContext,
+  name: IngestName,
+  options: IngestOptions,
+) {
   const command = buildIngestArgs(name, options);
   if (options.dryRun) {
     writeLine(context, command.join(" "));
@@ -98,10 +108,7 @@ export function resolvePythonCommand(env = process.env): string {
   );
 }
 
-function commandExists(
-  command: string,
-  env: NodeJS.ProcessEnv,
-): boolean {
+function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
   const probe = spawnSync(command, ["--version"], { env, stdio: "ignore" });
   return probe.status === 0 && !probe.error;
 }
@@ -137,8 +144,12 @@ function runProcess(context: CliContext, command: string[]): Promise<void> {
       cwd: process.env["AGENT_TOOLKIT_INGEST_DIR"] ?? resolveToolDir(),
       stdio: ["inherit", "pipe", "pipe"],
     });
-    child.stdout.on("data", (chunk: Buffer) => context.stdout(chunk.toString("utf8")));
-    child.stderr.on("data", (chunk: Buffer) => context.stderr(chunk.toString("utf8")));
+    child.stdout.on("data", (chunk: Buffer) =>
+      context.stdout(chunk.toString("utf8")),
+    );
+    child.stderr.on("data", (chunk: Buffer) =>
+      context.stderr(chunk.toString("utf8")),
+    );
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve();

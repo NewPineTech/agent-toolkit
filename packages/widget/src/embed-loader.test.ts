@@ -10,9 +10,8 @@ describe("embed loader", () => {
   });
 
   it("supports relative embed URLs when WIDGET_API_URL is not configured", async () => {
-    const { createChatIframe, getEmbedSnippet } = await import(
-      "./embed-loader.js"
-    );
+    const { createChatIframe, getEmbedSnippet } =
+      await import("./embed-loader.js");
 
     const iframe = createChatIframe({ workspaceId: "ws_dev_001" });
     const snippet = getEmbedSnippet({ workspaceId: "ws_dev_001" });

@@ -67,7 +67,7 @@ describe("agent-toolkit cli", () => {
     expect(result.stdout).toContain(
       "https://api.example.com/widget/embed?workspaceId=ws_acme",
     );
-    expect(result.stdout).toContain("title=\"Acme Assistant\"");
+    expect(result.stdout).toContain('title="Acme Assistant"');
     expect(result.stdout).toContain("primaryColor=%23D4775A");
   });
 
@@ -84,10 +84,10 @@ describe("agent-toolkit cli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("<script");
     expect(result.stdout).toContain(
-      "src=\"https://api.example.com/widget/widget.js\"",
+      'src="https://api.example.com/widget/widget.js"',
     );
-    expect(result.stdout).toContain("data-workspace-id=\"ws_acme\"");
-    expect(result.stdout).toContain("data-initial-open=\"true\"");
+    expect(result.stdout).toContain('data-workspace-id="ws_acme"');
+    expect(result.stdout).toContain('data-initial-open="true"');
   });
 
   it("maps ingest run test mode to python steps without shell scripts", async () => {

@@ -7,6 +7,8 @@ describe("ingest command helpers", () => {
   });
 
   it("resolves the repo ingest tool directory even outside the repo root", () => {
-    expect(resolveToolDir("/private/tmp")).toContain("tools/ragflow_kb_generater");
+    expect(resolveToolDir("/private/tmp")).toContain(
+      "tools/ragflow_kb_generater",
+    );
   });
 });

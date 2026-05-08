@@ -30,9 +30,7 @@ const config: StorybookConfig = {
   framework: "@storybook/react-vite",
   async viteFinal(config) {
     const widgetApiUrl =
-      process.env.WIDGET_API_URL ||
-      loadEnvVar("WIDGET_API_URL") ||
-      "";
+      process.env.WIDGET_API_URL || loadEnvVar("WIDGET_API_URL") || "";
     config.define = {
       ...config.define,
       "process.env.WIDGET_API_URL": JSON.stringify(widgetApiUrl),
