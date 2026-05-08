@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createRequire } from "node:module";
+import { WIDGET_EMBED_OPTION_KEYS } from "@agent-toolkit/core";
 
 interface EmbedQuery {
   workspaceId: string;
@@ -126,21 +127,7 @@ export async function embedRoute(app: FastifyInstance) {
 
       const params = new URLSearchParams();
       params.set("workspaceId", q.workspaceId);
-      for (const key of [
-        "primaryColor",
-        "backgroundColor",
-        "textColor",
-        "fontFamily",
-        "borderRadius",
-        "position",
-        "title",
-        "subtitle",
-        "placeholder",
-        "greeting",
-        "suggestions",
-        "initialOpen",
-        "parentOrigin",
-      ] as const) {
+      for (const key of WIDGET_EMBED_OPTION_KEYS) {
         if (q[key]) params.set(key, q[key]!);
       }
 

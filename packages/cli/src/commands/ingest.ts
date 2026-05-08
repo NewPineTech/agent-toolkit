@@ -1,5 +1,7 @@
-import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { CliContext } from "../context.js";
 import { writeLine } from "../context.js";
 
@@ -27,7 +29,10 @@ interface IngestOptions {
   verbose?: boolean;
 }
 
-const toolDir = join(process.cwd(), "tools", "ragflow_kb_generater");
+const packageRelativeToolDir = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../tools/ragflow_kb_generater",
+);
 
 export async function runIngestPipeline(context: CliContext, options: IngestOptions) {
   const limit = options.test ? "5" : undefined;
@@ -60,7 +65,7 @@ export async function runIngestCommand(context: CliContext, name: IngestName, op
 }
 
 function buildIngestArgs(name: IngestName, options: IngestOptions): string[] {
-  const args = ["python", scriptFor(name)];
+  const args = [resolvePythonCommand(), scriptFor(name)];
   if (options.rootFolderId) args.push("--root-folder-id", options.rootFolderId);
   if (options.limit) args.push("--limit", options.limit);
   if (options.resume) args.push("--resume");
@@ -72,6 +77,33 @@ function buildIngestArgs(name: IngestName, options: IngestOptions): string[] {
   if (options.skipParse) args.push("--skip-parse");
   if (options.verbose) args.push("--verbose");
   return args;
+}
+
+export function resolveToolDir(cwd = process.cwd()): string {
+  const cwdToolDir = join(cwd, "tools", "ragflow_kb_generater");
+  if (existsSync(cwdToolDir)) return cwdToolDir;
+  if (existsSync(packageRelativeToolDir)) return packageRelativeToolDir;
+  throw new Error(
+    "RAGFlow ingest tools not found. Run this command from the repository root or set AGENT_TOOLKIT_INGEST_DIR.",
+  );
+}
+
+export function resolvePythonCommand(env = process.env): string {
+  const configured = env["AGENT_TOOLKIT_PYTHON"]?.trim();
+  if (configured) return configured;
+  if (commandExists("python", env)) return "python";
+  if (commandExists("python3", env)) return "python3";
+  throw new Error(
+    "Python interpreter not found. Install python3 or set AGENT_TOOLKIT_PYTHON.",
+  );
+}
+
+function commandExists(
+  command: string,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  const probe = spawnSync(command, ["--version"], { env, stdio: "ignore" });
+  return probe.status === 0 && !probe.error;
 }
 
 function scriptFor(name: IngestName): string {
@@ -102,7 +134,7 @@ function runProcess(context: CliContext, command: string[]): Promise<void> {
     }
     writeLine(context, `$ ${command.join(" ")}`);
     const child = spawn(executable, args, {
-      cwd: toolDir,
+      cwd: process.env["AGENT_TOOLKIT_INGEST_DIR"] ?? resolveToolDir(),
       stdio: ["inherit", "pipe", "pipe"],
     });
     child.stdout.on("data", (chunk: Buffer) => context.stdout(chunk.toString("utf8")));

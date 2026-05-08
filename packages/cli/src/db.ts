@@ -1,4 +1,8 @@
-import { createCipheriv, randomBytes } from "node:crypto";
+import {
+  AesEncryptionService,
+  parseDomains,
+  parsePositiveInteger,
+} from "@agent-toolkit/core";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -41,40 +45,19 @@ export function createPool() {
 export function encryptSecret(plaintext: string): string {
   const encryptionKey = process.env["ENCRYPTION_KEY"];
   if (!encryptionKey) {
-    throw new Error("ENCRYPTION_KEY is required for encrypted workspace fields");
+    throw new Error(
+      "ENCRYPTION_KEY is required for encrypted workspace fields",
+    );
   }
-  const key = Buffer.from(encryptionKey, "hex");
-  if (key.length !== 32) {
-    throw new Error("ENCRYPTION_KEY must be a 64-character hex string");
-  }
-  const iv = randomBytes(16);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, encrypted]).toString("base64");
+  return new AesEncryptionService(encryptionKey).encrypt(plaintext);
 }
 
-export function parseDomains(value?: string): string[] {
-  if (!value) return [];
-  return value
-    .split(",")
-    .map((domain) => domain.trim())
-    .filter(Boolean);
-}
+export { parseDomains, parsePositiveInteger };
 
-export function parsePositiveInteger(value: string | undefined, fallback?: number): number | undefined {
-  if (value == null) return fallback;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`Expected a positive integer, got "${value}"`);
-  }
-  return parsed;
-}
-
-export async function findWorkspace(pool: pg.Pool, workspaceId: string): Promise<WorkspaceRow | null> {
+export async function findWorkspace(
+  pool: pg.Pool,
+  workspaceId: string,
+): Promise<WorkspaceRow | null> {
   const result = await pool.query<WorkspaceRow>(
     "select * from workspaces where id = $1 limit 1",
     [workspaceId],

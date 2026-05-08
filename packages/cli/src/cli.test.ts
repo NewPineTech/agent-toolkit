@@ -94,13 +94,11 @@ describe("agent-toolkit cli", () => {
     const result = await runCli(["ingest", "run", "--test", "--dry-run"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("python scripts/step1_inventory.py");
-    expect(result.stdout).toContain("python scripts/step2_ocr_sop.py --limit 5");
+    expect(result.stdout).toContain("scripts/step1_inventory.py");
+    expect(result.stdout).toContain("scripts/step2_ocr_sop.py --limit 5");
+    expect(result.stdout).toContain("scripts/step3_form_cards.py --limit 5");
     expect(result.stdout).toContain(
-      "python scripts/step3_form_cards.py --limit 5",
-    );
-    expect(result.stdout).toContain(
-      "python scripts/step4_create_kbs.py --skip-existing",
+      "scripts/step4_create_kbs.py --skip-existing",
     );
     expect(result.stdout).not.toContain("run_all.sh");
   });
