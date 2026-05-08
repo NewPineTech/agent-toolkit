@@ -37,16 +37,34 @@ describe("agent-toolkit cli", () => {
     const result = await runCli(["--help"]);
 
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("tui");
     expect(result.stdout).toContain("workspace");
     expect(result.stdout).toContain("widget");
     expect(result.stdout).toContain("chat");
     expect(result.stdout).toContain("usage");
     expect(result.stdout).toContain("sessions");
     expect(result.stdout).toContain("ingest");
+    expect(result.stdout).toContain("tui");
     expect(result.stdout).not.toContain("dev");
     expect(result.stdout).not.toContain("build");
     expect(result.stdout).not.toContain("deploy");
     expect(result.stdout).not.toContain("migrate");
+  });
+
+  it("runs the full-screen TUI command", async () => {
+    const output: string[] = [];
+    const program = createCliProgram({
+      stdout: (message) => output.push(message),
+      runTui: async (context) => {
+        context.stdout("TUI started\n");
+      },
+    });
+
+    await program.parseAsync(["node", "atk", "tui"], {
+      from: "node",
+    });
+
+    expect(output.join("")).toBe("TUI started\n");
   });
 
   it("prints an iframe embed snippet for a workspace", async () => {
