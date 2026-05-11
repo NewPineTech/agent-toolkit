@@ -69,4 +69,17 @@ describe("command registry", () => {
       ),
     ).toEqual([]);
   });
+
+  it("marks generated widget output as copyable for interactive UIs", () => {
+    const copyableCommands = commandSpecs
+      .filter((command) => command.copyableOutput)
+      .map((command) => command.id);
+
+    expect(copyableCommands).toEqual([
+      "widget.snippet",
+      "widget.iframe",
+      "widget.script",
+      "widget.preview",
+    ]);
+  });
 });

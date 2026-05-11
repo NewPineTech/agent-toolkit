@@ -22,6 +22,11 @@ export interface WorkspaceRow {
   updated_at: Date;
 }
 
+export type WorkspaceSummary = Pick<
+  WorkspaceRow,
+  "id" | "provider_type" | "auth_mode" | "created_at"
+>;
+
 export interface SessionRow {
   id: string;
   workspace_id: string;
@@ -63,4 +68,13 @@ export async function findWorkspace(
     [workspaceId],
   );
   return result.rows[0] ?? null;
+}
+
+export async function listWorkspaceSummaries(
+  pool: pg.Pool,
+): Promise<WorkspaceSummary[]> {
+  const result = await pool.query<WorkspaceSummary>(
+    "select id, provider_type, auth_mode, created_at from workspaces order by created_at desc",
+  );
+  return result.rows;
 }

@@ -1,6 +1,6 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
-import { TuiApp } from "./app.js";
+import { copyTextToClipboard, TuiApp } from "./app.js";
 
 describe("TuiApp", () => {
   it("renders a grouped feature picker before command details", () => {
@@ -96,6 +96,227 @@ describe("TuiApp", () => {
     expect(lastFrame()).not.toContain("first");
   });
 
+  it("loads workspaces before prompting for workspace-scoped commands", async () => {
+    const command = {
+      id: "test.workspace",
+      path: ["test", "workspace"],
+      group: "test",
+      title: "Test Workspace",
+      description: "Test Workspace",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [],
+      runner: () => undefined,
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+          {
+            id: "ws_two",
+            providerType: "langgraph",
+            authMode: "authenticated",
+            createdAt: "2026-05-10T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Select workspace");
+    expect(lastFrame()).toContain("ws_one - ragflow / anonymous");
+    expect(lastFrame()).toContain("ws_two - langgraph / authenticated");
+    expect(lastFrame()).not.toContain("Workspace ID: required");
+  });
+
+  it("passes the selected workspace to workspace-scoped command runners", async () => {
+    const command = {
+      id: "test.workspace",
+      path: ["test", "workspace"],
+      group: "test",
+      title: "Test Workspace",
+      description: "Test Workspace",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [{ name: "message", label: "Message", required: true }],
+      runner: (
+        context: { stdout(message: string): void },
+        values: Record<string, string | boolean | undefined>,
+      ) => {
+        context.stdout(
+          `${String(values.workspaceId)}:${String(values.message)}`,
+        );
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+          {
+            id: "ws_two",
+            providerType: "langgraph",
+            authMode: "authenticated",
+            createdAt: "2026-05-10T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Message");
+    expect(lastFrame()).not.toContain("Workspace ID: required");
+
+    stdin.write("hello\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("ws_two:hello");
+  });
+
+  it("reviews immediately after workspace selection when no other inputs exist", async () => {
+    const command = {
+      id: "test.workspace",
+      path: ["test", "workspace"],
+      group: "test",
+      title: "Test Workspace",
+      description: "Test Workspace",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [],
+      runner: () => undefined,
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Review inputs");
+    expect(lastFrame()).toContain("Workspace ID: ws_one");
+    expect(lastFrame()).toContain("Run command");
+    expect(lastFrame()).toContain("Change workspace");
+    expect(lastFrame()).not.toContain("Edit inputs");
+    expect(lastFrame()).not.toContain("Workspace ID: required");
+  });
+
+  it("can change the selected workspace from review", async () => {
+    const command = {
+      id: "test.workspace",
+      path: ["test", "workspace"],
+      group: "test",
+      title: "Test Workspace",
+      description: "Test Workspace",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [],
+      runner: () => undefined,
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Select workspace");
+    expect(lastFrame()).toContain("ws_one - ragflow / anonymous");
+    expect(lastFrame()).not.toContain("Review inputs");
+  });
+
+  it("sanitizes workspace metadata before rendering terminal labels", async () => {
+    const command = {
+      id: "test.workspace",
+      path: ["test", "workspace"],
+      group: "test",
+      title: "Test Workspace",
+      description: "Test Workspace",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [],
+      runner: () => undefined,
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_\u001b[31mred",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).not.toContain("\u001b[31m");
+    expect(lastFrame()).toContain("ws_[31mred - ragflow / anonymous");
+  });
+
   it("exits form entry to the parent command list", async () => {
     const command = {
       id: "test.form",
@@ -163,6 +384,99 @@ describe("TuiApp", () => {
     expect(lastFrame()).not.toContain("Run same command again");
   });
 
+  it("copies copyable command output from the result screen", async () => {
+    const copied: string[] = [];
+    const command = {
+      id: "test.copy",
+      path: ["test", "copy"],
+      group: "test",
+      title: "Test Copy",
+      description: "Test Copy",
+      args: [],
+      options: [],
+      copyableOutput: true,
+      runner: (context: { stdout(message: string): void }) => {
+        context.stdout("<iframe></iframe>\n");
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        copyToClipboard={async (value) => {
+          copied.push(value);
+        }}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Copy output to clipboard");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(copied).toEqual(["<iframe></iframe>\n"]);
+    expect(lastFrame()).toContain("Copied to clipboard.");
+  });
+
+  it("does not show clipboard action for non-copyable output", async () => {
+    const command = {
+      id: "test.done",
+      path: ["test", "done"],
+      group: "test",
+      title: "Test Done",
+      description: "Test Done",
+      args: [],
+      options: [],
+      runner: (context: { stdout(message: string): void }) => {
+        context.stdout("done\n");
+      },
+    };
+    const { lastFrame, stdin } = render(<TuiApp commands={[command]} />);
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Run same command again");
+    expect(lastFrame()).not.toContain("Copy output to clipboard");
+  });
+
+  it("sanitizes command output before rendering results", async () => {
+    const command = {
+      id: "test.output",
+      path: ["test", "output"],
+      group: "test",
+      title: "Test Output",
+      description: "Test Output",
+      args: [],
+      options: [],
+      runner: (context: { stdout(message: string): void }) => {
+        context.stdout("hello\u001b[31mred\nnext");
+      },
+    };
+    const { lastFrame, stdin } = render(<TuiApp commands={[command]} />);
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).not.toContain("\u001b[31m");
+    expect(lastFrame()).toContain("hello[31mred");
+    expect(lastFrame()).toContain("next");
+  });
+
   it("can run another command from the result actions", async () => {
     const command = {
       id: "test.done",
@@ -224,5 +538,26 @@ describe("TuiApp", () => {
 
     expect(lastFrame()).toContain("API Key: [hidden]");
     expect(lastFrame()).not.toContain("super-secret");
+  });
+});
+
+describe("copyTextToClipboard", () => {
+  it("falls back to terminal clipboard escape sequences when Linux clipboard commands are missing", async () => {
+    const commands: string[] = [];
+    const terminalCopies: string[] = [];
+
+    await copyTextToClipboard("snippet", {
+      platform: "linux",
+      runCommand: async (command) => {
+        commands.push(command);
+        throw new Error(`spawn ${command} ENOENT`);
+      },
+      writeTerminalClipboard: async (value) => {
+        terminalCopies.push(value);
+      },
+    });
+
+    expect(commands).toEqual(["wl-copy", "xclip", "xsel"]);
+    expect(terminalCopies).toEqual(["snippet"]);
   });
 });
