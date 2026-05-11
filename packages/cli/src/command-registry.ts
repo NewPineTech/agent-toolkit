@@ -60,6 +60,7 @@ export interface CommandSpec {
   args: CommandField[];
   options: CommandField[];
   destructive?: boolean;
+  copyableOutput?: boolean;
   runner(context: CliContext, values: CommandValues): void | Promise<void>;
 }
 
@@ -481,15 +482,18 @@ function widget(
     values: CommandValues,
   ) => void,
 ) {
-  return spec(
-    id,
-    ["widget", name],
-    "widget",
-    title,
-    [workspaceId],
-    embedOptions,
-    (ctx, v) => runner(ctx, String(v.workspaceId), v),
-  );
+  return {
+    ...spec(
+      id,
+      ["widget", name],
+      "widget",
+      title,
+      [workspaceId],
+      embedOptions,
+      (ctx, v) => runner(ctx, String(v.workspaceId), v),
+    ),
+    copyableOutput: true,
+  };
 }
 
 function ingest(

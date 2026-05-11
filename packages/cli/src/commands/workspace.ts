@@ -4,6 +4,7 @@ import {
   createPool,
   encryptSecret,
   findWorkspace,
+  listWorkspaceSummaries,
   parseDomains,
   parsePositiveInteger,
   type WorkspaceRow,
@@ -76,16 +77,12 @@ export async function runWorkspaceCreate(
 
 export async function runWorkspaceList(context: CliContext) {
   await withPool(createPool, async (pool) => {
-    const result = await pool.query<
-      Pick<WorkspaceRow, "id" | "provider_type" | "auth_mode" | "created_at">
-    >(
-      "select id, provider_type, auth_mode, created_at from workspaces order by created_at desc",
-    );
-    if (result.rows.length === 0) {
+    const rows = await listWorkspaceSummaries(pool);
+    if (rows.length === 0) {
       writeLine(context, "No workspaces found.");
       return;
     }
-    for (const row of result.rows) {
+    for (const row of rows) {
       writeLine(
         context,
         `${row.id}\t${row.provider_type}\t${row.auth_mode}\t${formatDate(row.created_at)}`,

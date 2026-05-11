@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { spawn } from "node:child_process";
 import { Box, Text, useApp, useInput } from "ink";
 import {
   commandSpecs,
@@ -6,10 +7,30 @@ import {
   type CommandSpec,
 } from "../command-registry.js";
 import type { CliContext } from "../context.js";
+import { createPool, listWorkspaceSummaries } from "../db.js";
 
 type Values = Record<string, string | boolean | undefined>;
 type RunOutcome = "success" | "error";
 type ListItem = { label: string; value: string };
+export interface WorkspaceChoice {
+  id: string;
+  providerType: string;
+  authMode: string;
+  createdAt: string;
+}
+export type WorkspaceLoader = () => Promise<WorkspaceChoice[]>;
+export type ClipboardWriter = (value: string) => Promise<void>;
+type ClipboardCommandRunner = (
+  command: string,
+  args: string[],
+  value: string,
+) => Promise<void>;
+type TerminalClipboardWriter = (value: string) => Promise<void>;
+interface ClipboardOptions {
+  platform?: NodeJS.Platform;
+  runCommand?: ClipboardCommandRunner;
+  writeTerminalClipboard?: TerminalClipboardWriter;
+}
 type FeatureGroup = {
   id: string;
   label: string;
@@ -65,8 +86,12 @@ const groupOrder = [
 
 export function TuiApp({
   commands = commandSpecs,
+  loadWorkspaces = loadWorkspaceChoices,
+  copyToClipboard = copyTextToClipboard,
 }: {
   commands?: CommandSpec[];
+  loadWorkspaces?: WorkspaceLoader;
+  copyToClipboard?: ClipboardWriter;
 }) {
   const { exit } = useApp();
   const [selectedGroup, setSelectedGroup] = useState<FeatureGroup>();
@@ -78,8 +103,27 @@ export function TuiApp({
   const [completed, setCompleted] = useState(false);
   const [error, setError] = useState("");
   const [outcome, setOutcome] = useState<RunOutcome>("success");
+  const [workspaceChoices, setWorkspaceChoices] = useState<WorkspaceChoice[]>(
+    [],
+  );
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [workspaceLoadAttempt, setWorkspaceLoadAttempt] = useState(0);
+  const [copyStatus, setCopyStatus] = useState("");
   const fields = selected ? [...selected.args, ...selected.options] : [];
   const field = fields[fieldIndex];
+  const selectedWorkspaceId =
+    typeof values["workspaceId"] === "string" ? values["workspaceId"] : "";
+  const needsWorkspaceSelection = selected
+    ? commandRequiresWorkspaceSelection(selected)
+    : false;
+  const shouldSelectWorkspace =
+    Boolean(selected) && needsWorkspaceSelection && selectedWorkspaceId === "";
+  const canChangeWorkspace =
+    needsWorkspaceSelection && selectedWorkspaceId !== "";
+  const hasEditableInputs = fields.some((candidate) =>
+    isEditableField(candidate, values),
+  );
 
   const groups = useMemo(() => buildFeatureGroups(commands), [commands]);
   const groupItems = useMemo(
@@ -98,6 +142,41 @@ export function TuiApp({
       })),
     [selectedGroup],
   );
+
+  useEffect(() => {
+    if (!selected || !needsWorkspaceSelection || selectedWorkspaceId !== "") {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingWorkspaces(true);
+    setWorkspaceError("");
+    setWorkspaceChoices([]);
+    loadWorkspaces()
+      .then((choices) => {
+        if (cancelled) return;
+        setWorkspaceChoices(choices);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setWorkspaceError(
+          error instanceof Error ? error.message : String(error),
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingWorkspaces(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    loadWorkspaces,
+    needsWorkspaceSelection,
+    selected,
+    selectedWorkspaceId,
+    workspaceLoadAttempt,
+  ]);
 
   if (!selectedGroup) {
     return (
@@ -149,34 +228,101 @@ export function TuiApp({
     );
   }
 
+  if (shouldSelectWorkspace) {
+    const workspaceItems = workspaceChoices.map((workspace) => ({
+      label: `${renderTerminalText(workspace.id)} - ${renderTerminalText(workspace.providerType)} / ${renderTerminalText(workspace.authMode)} - ${renderTerminalText(workspace.createdAt)}`,
+      value: workspace.id,
+    }));
+
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Header title={selected.path.join(" ")} subtitle="Select workspace" />
+        {loadingWorkspaces ? (
+          <Text color="yellow">Loading workspaces...</Text>
+        ) : workspaceError ? (
+          <>
+            <Text color="red">{sanitizeTerminalOutput(workspaceError)}</Text>
+            <ShortcutList
+              items={[
+                { label: "Retry loading workspaces", value: "retry" },
+                { label: "Back to command list", value: "back" },
+              ]}
+              onSelect={(item) => {
+                if (item.value === "retry") {
+                  setWorkspaceLoadAttempt((current) => current + 1);
+                  return;
+                }
+                resetCommandState();
+              }}
+              onBack={resetCommandState}
+              onQuit={exit}
+            />
+          </>
+        ) : workspaceItems.length === 0 ? (
+          <>
+            <Text color="gray">No workspaces found.</Text>
+            <ShortcutList
+              items={[{ label: "Back to command list", value: "back" }]}
+              onSelect={resetCommandState}
+              onBack={resetCommandState}
+              onQuit={exit}
+            />
+          </>
+        ) : (
+          <ShortcutList
+            items={workspaceItems}
+            onSelect={(item) => selectWorkspace(item.value)}
+            onBack={resetCommandState}
+            onQuit={exit}
+          />
+        )}
+      </Box>
+    );
+  }
+
   if (running) {
     return (
       <Box flexDirection="column" paddingX={1}>
         <Header title={selected.path.join(" ")} subtitle="Command running" />
         <Text color="yellow">Running...</Text>
-        <Text>{output}</Text>
+        <Text>{sanitizeTerminalOutput(output)}</Text>
       </Box>
     );
   }
 
   if (completed) {
+    const canCopyOutput =
+      selected.copyableOutput && outcome === "success" && output.length > 0;
     return (
       <Box flexDirection="column" paddingX={1}>
         <Header title={selected.path.join(" ")} subtitle="Command result" />
         <Text color={outcome === "success" ? "green" : "red"}>
           {outcome === "success" ? "Completed" : "Failed"}
         </Text>
-        <Text>{output || "(No output)"}</Text>
+        <Text>{sanitizeTerminalOutput(output) || "(No output)"}</Text>
+        {copyStatus ? (
+          <Text color={copyStatus === "Copied to clipboard." ? "green" : "red"}>
+            {sanitizeTerminalOutput(copyStatus)}
+          </Text>
+        ) : null}
         <ShortcutList
           items={[
+            ...(canCopyOutput
+              ? [{ label: "Copy output to clipboard", value: "copy" }]
+              : []),
             { label: "Run same command again", value: "again" },
             { label: "Run another command", value: "another" },
           ]}
           onSelect={(item) => {
+            if (item.value === "copy") {
+              void copyOutput();
+              return;
+            }
             if (item.value === "again") {
               setCompleted(false);
               setOutput("");
               setOutcome("success");
+              setCopyStatus("");
               if (selected.destructive) {
                 setFieldIndex(fields.length);
                 return;
@@ -211,7 +357,10 @@ export function TuiApp({
             <ShortcutList
               items={[
                 { label: "Run command", value: "run" },
-                ...(fields.length > 0
+                ...(canChangeWorkspace
+                  ? [{ label: "Change workspace", value: "workspace" }]
+                  : []),
+                ...(hasEditableInputs
                   ? [{ label: "Edit inputs", value: "edit" }]
                   : []),
                 { label: "Cancel", value: "cancel" },
@@ -222,7 +371,11 @@ export function TuiApp({
                   return;
                 }
                 if (item.value === "edit") {
-                  setFieldIndex(0);
+                  returnToEditableInputs();
+                  return;
+                }
+                if (item.value === "workspace") {
+                  changeWorkspace();
                   return;
                 }
                 void runSelected(
@@ -242,7 +395,10 @@ export function TuiApp({
           <ShortcutList
             items={[
               { label: "Run command", value: "run" },
-              ...(fields.length > 0
+              ...(canChangeWorkspace
+                ? [{ label: "Change workspace", value: "workspace" }]
+                : []),
+              ...(hasEditableInputs
                 ? [{ label: "Edit inputs", value: "edit" }]
                 : []),
               { label: "Back to command list", value: "back" },
@@ -253,7 +409,11 @@ export function TuiApp({
                 return;
               }
               if (item.value === "edit") {
-                setFieldIndex(0);
+                returnToEditableInputs();
+                return;
+              }
+              if (item.value === "workspace") {
+                changeWorkspace();
                 return;
               }
               void runSelected(
@@ -307,26 +467,65 @@ export function TuiApp({
     setCompleted(false);
     setError("");
     setOutcome("success");
+    setCopyStatus("");
+    setWorkspaceChoices([]);
+    setLoadingWorkspaces(false);
+    setWorkspaceError("");
   }
 
   function goToPreviousField() {
-    if (fieldIndex === 0) return;
+    const nextIndex = findEditableFieldIndex(fields, fieldIndex, -1, values);
+    if (nextIndex === -1) return;
     setError("");
-    setFieldIndex((current) => current - 1);
+    setFieldIndex(nextIndex);
   }
 
   function goToNextField() {
-    if (fieldIndex >= fields.length - 1) return;
+    const nextIndex = findEditableFieldIndex(fields, fieldIndex, 1, values);
+    if (nextIndex === -1) return;
     setError("");
-    setFieldIndex((current) => current + 1);
+    setFieldIndex(nextIndex);
   }
 
   function returnToInputsOrCommands() {
-    if (fields.length > 0) {
-      setFieldIndex(0);
-      return;
-    }
+    if (returnToEditableInputs()) return;
     resetCommandState();
+  }
+
+  function returnToEditableInputs() {
+    const nextIndex = findEditableFieldIndex(fields, -1, 1, values);
+    if (nextIndex === -1) return false;
+    setFieldIndex(nextIndex);
+    return true;
+  }
+
+  function selectWorkspace(workspaceId: string) {
+    const nextValues = { ...values, workspaceId };
+    setError("");
+    setValues(nextValues);
+    const nextIndex = findEditableFieldIndex(fields, -1, 1, nextValues);
+    setFieldIndex(nextIndex === -1 ? fields.length : nextIndex);
+  }
+
+  function changeWorkspace() {
+    setError("");
+    setFieldIndex(0);
+    setValues((current) => ({
+      ...current,
+      workspaceId: undefined,
+    }));
+  }
+
+  async function copyOutput() {
+    setCopyStatus("");
+    try {
+      await copyToClipboard(output);
+      setCopyStatus("Copied to clipboard.");
+    } catch (error) {
+      setCopyStatus(
+        `Copy failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   function updateFieldValue(
@@ -478,6 +677,143 @@ function groupRank(groupId: string): number {
   return index === -1 ? groupOrder.length : index;
 }
 
+async function loadWorkspaceChoices(): Promise<WorkspaceChoice[]> {
+  const pool = createPool();
+  try {
+    const rows = await listWorkspaceSummaries(pool);
+    return rows.map((row) => ({
+      id: row.id,
+      providerType: row.provider_type,
+      authMode: row.auth_mode,
+      createdAt: new Date(row.created_at).toISOString(),
+    }));
+  } finally {
+    await pool.end();
+  }
+}
+
+export async function copyTextToClipboard(
+  value: string,
+  options: ClipboardOptions = {},
+): Promise<void> {
+  const platform = options.platform ?? process.platform;
+  const runCommand = options.runCommand ?? writeClipboardCommand;
+  const writeTerminalClipboard =
+    options.writeTerminalClipboard ?? writeOsc52Clipboard;
+  let lastError: unknown;
+
+  if (platform === "darwin") {
+    try {
+      await runCommand("pbcopy", [], value);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (platform === "win32") {
+    try {
+      await runCommand("clip", [], value);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (platform !== "darwin" && platform !== "win32") {
+    const commands: Array<[string, string[]]> = [
+      ["wl-copy", []],
+      ["xclip", ["-selection", "clipboard"]],
+      ["xsel", ["--clipboard", "--input"]],
+    ];
+    for (const [command, args] of commands) {
+      try {
+        await runCommand(command, args, value);
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+  }
+
+  try {
+    await writeTerminalClipboard(value);
+  } catch (error) {
+    const commandReason =
+      lastError instanceof Error ? `: ${lastError.message}` : "";
+    const terminalReason = error instanceof Error ? `; ${error.message}` : "";
+    throw new Error(
+      `No clipboard command or terminal clipboard fallback available${commandReason}${terminalReason}`,
+    );
+  }
+}
+
+function writeClipboardCommand(
+  command: string,
+  args: string[],
+  value: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["pipe", "ignore", "pipe"] });
+    let stderr = "";
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
+    });
+    child.stdin.end(value);
+  });
+}
+
+function writeOsc52Clipboard(value: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const sequence = `\u001b]52;c;${Buffer.from(value, "utf8").toString("base64")}\u0007`;
+    const flushed = process.stdout.write(sequence, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+    if (!flushed) {
+      process.stdout.once("error", reject);
+    }
+  });
+}
+
+function commandRequiresWorkspaceSelection(command: CommandSpec) {
+  return [...command.args, ...command.options].some(isWorkspaceField);
+}
+
+function isWorkspaceField(field: CommandField) {
+  return field.name === "workspaceId";
+}
+
+function isEditableField(field: CommandField, values: Values) {
+  return !isWorkspaceField(field) || values["workspaceId"] === undefined;
+}
+
+function findEditableFieldIndex(
+  fields: CommandField[],
+  currentIndex: number,
+  delta: 1 | -1,
+  values: Values,
+) {
+  for (
+    let index = currentIndex + delta;
+    index >= 0 && index < fields.length;
+    index += delta
+  ) {
+    const field = fields[index];
+    if (field && isEditableField(field, values)) return index;
+  }
+  return -1;
+}
+
 function CommandSummary({
   command,
   values,
@@ -496,7 +832,9 @@ function CommandSummary({
       {fields.map((field) => {
         const value = values[field.name];
         const renderedValue =
-          value === undefined || value === "" ? "(not set)" : String(value);
+          value === undefined || value === ""
+            ? "(not set)"
+            : renderTerminalText(String(value));
         return (
           <Text key={field.name}>
             {field.label}: {field.secret ? "[hidden]" : renderedValue}
@@ -720,7 +1058,18 @@ function renderFieldValue(
   if (field.secret) {
     return "*".repeat(String(value).length);
   }
-  return String(value);
+  return renderTerminalText(String(value));
+}
+
+function renderTerminalText(value: string) {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
+
+function sanitizeTerminalOutput(value: string) {
+  return value.replace(
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g,
+    "",
+  );
 }
 
 function applyTextInput(value: string, input: string) {
