@@ -47,3 +47,5 @@ storybook-static
 index.html
 
 example.script.txt
+# LangGraph API
+.langgraph_api

@@ -51,6 +51,13 @@ export class PostgresSessionStore implements SessionStore {
       .where(eq(sessions.id, id));
   }
 
+  async updateMetadata(
+    id: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    await this.db.update(sessions).set({ metadata }).where(eq(sessions.id, id));
+  }
+
   async findByWorkspaceAndFingerprint(
     workspaceId: string,
     fingerprint: string,

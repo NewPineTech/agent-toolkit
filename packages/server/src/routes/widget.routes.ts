@@ -1,8 +1,12 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { AuthMode } from "@agent-toolkit/types";
+import { AuthMode, ProviderType } from "@agent-toolkit/types";
 import type { Workspace } from "@agent-toolkit/types";
+import {
+  appendSessionTurn,
+  normalizeSessionMessages,
+} from "@agent-toolkit/langgraph";
 import type { AppCradle } from "../app.js";
 import { AppError } from "../factories/error-response.factory.js";
 import { schema, type Database } from "../db/index.js";
@@ -212,15 +216,49 @@ export async function widgetRoutes(
       };
 
       try {
+        const isLangGraphProvider =
+          workspace.providerType === ProviderType.LANGGRAPH;
+        const history = isLangGraphProvider
+          ? normalizeSessionMessages(session.metadata["conversationMessages"])
+          : [];
+        let assistantContent = "";
         const stream = provider.sendMessage(
           config,
           session.providerSessionId!,
           message,
+          isLangGraphProvider
+            ? {
+                messages: history,
+                ...(typeof session.metadata["memorySummary"] === "string"
+                  ? { memorySummary: session.metadata["memorySummary"] }
+                  : {}),
+              }
+            : undefined,
         );
 
         for await (const event of stream) {
           if (reply.raw.destroyed) break;
+          if (event.type === "token") {
+            assistantContent += event.content;
+          }
           writeSSE(event);
+        }
+        if (isLangGraphProvider) {
+          const nextMetadata = {
+            ...session.metadata,
+            conversationMessages: appendSessionTurn(
+              history,
+              message,
+              assistantContent,
+              { maxMessages: 24 },
+            ),
+          };
+          await cradle.sessionStore.updateMetadata(sessionId, nextMetadata);
+          session = { ...session, metadata: nextMetadata };
+          await cradle.sessionCache.set(
+            session,
+            cradle.config.SESSION_TTL_MINUTES * 60,
+          );
         }
       } catch (err) {
         cradle.logger.error("Stream error", {

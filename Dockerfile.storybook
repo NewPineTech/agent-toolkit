@@ -6,6 +6,7 @@ FROM base AS deps
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json .npmrc* ./
 COPY packages/types/package.json packages/types/
 COPY packages/core/package.json packages/core/
+COPY packages/langgraph/package.json packages/langgraph/
 COPY packages/widget/package.json packages/widget/
 RUN pnpm install --frozen-lockfile --prod=false
 

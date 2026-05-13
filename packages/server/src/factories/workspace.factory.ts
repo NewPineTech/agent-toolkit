@@ -16,6 +16,7 @@ export class WorkspaceFactory {
       providerAgentId: row.providerAgentId,
       providerApiKey: row.providerApiKey,
       providerBaseUrl: row.providerBaseUrl,
+      providerConfig: row.providerConfig,
       allowedDomains: row.allowedDomains,
       authMode: row.authMode as AuthMode,
       authSecret: row.authSecret,

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { CliContext } from "../context.js";
 import { writeLine } from "../context.js";
 import {
@@ -23,6 +24,8 @@ interface WorkspaceOptions {
   maxRequests?: string;
   windowMs?: string;
   maxMessageLength?: string;
+  providerConfig?: string;
+  providerConfigFile?: string;
 }
 
 export async function runWorkspaceCreate(
@@ -45,13 +48,15 @@ export async function runWorkspaceCreate(
     await pool.query(
       `insert into workspaces (
         id, provider_type, provider_agent_id, provider_api_key, provider_base_url,
-        allowed_domains, auth_mode, auth_secret, rate_limit_config, max_message_length, updated_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())
+        provider_config, allowed_domains, auth_mode, auth_secret, rate_limit_config,
+        max_message_length, updated_at
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
       on conflict (id) do update set
         provider_type = excluded.provider_type,
         provider_agent_id = excluded.provider_agent_id,
         provider_api_key = excluded.provider_api_key,
         provider_base_url = excluded.provider_base_url,
+        provider_config = excluded.provider_config,
         allowed_domains = excluded.allowed_domains,
         auth_mode = excluded.auth_mode,
         auth_secret = excluded.auth_secret,
@@ -64,6 +69,7 @@ export async function runWorkspaceCreate(
         requiredOption(options.agentId, "agentId"),
         encryptedApiKey,
         requiredOption(options.baseUrl, "baseUrl"),
+        parseProviderConfigOptions(options) ?? {},
         parseDomains(options.domains),
         options.authMode ?? "anonymous",
         encryptedAuthSecret,
@@ -119,6 +125,8 @@ export async function runWorkspaceUpdate(
       options.apiKey ? encryptSecret(options.apiKey) : undefined,
     );
     addUpdateField(fields, values, "provider_base_url", options.baseUrl);
+    const providerConfig = parseProviderConfigOptions(options);
+    addUpdateField(fields, values, "provider_config", providerConfig);
     addUpdateField(
       fields,
       values,
@@ -225,10 +233,60 @@ function redactWorkspace(workspace: WorkspaceRow) {
   return {
     ...workspace,
     provider_api_key: "[encrypted]",
+    provider_config: redactSecretLikeValues(workspace.provider_config ?? {}),
     auth_secret: workspace.auth_secret ? "[encrypted]" : null,
   };
 }
 
 function formatDate(value: Date) {
   return new Date(value).toISOString();
+}
+
+function parseProviderConfigOptions(
+  options: WorkspaceOptions,
+): Record<string, unknown> | undefined {
+  if (options.providerConfig && options.providerConfigFile) {
+    throw new Error(
+      "Use either providerConfig or providerConfigFile, not both",
+    );
+  }
+  if (options.providerConfig) {
+    return parseProviderConfig(options.providerConfig);
+  }
+  if (options.providerConfigFile) {
+    return parseProviderConfig(
+      readFileSync(options.providerConfigFile, "utf8"),
+    );
+  }
+  return undefined;
+}
+
+function parseProviderConfig(input: string): Record<string, unknown> {
+  const parsed = JSON.parse(input) as unknown;
+  if (!isRecord(parsed)) {
+    throw new Error("Provider config must be a JSON object");
+  }
+  return parsed;
+}
+
+function redactSecretLikeValues(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSecretLikeValues);
+  }
+  if (!isRecord(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [
+      key,
+      isSecretLikeKey(key) ? "[redacted]" : redactSecretLikeValues(child),
+    ]),
+  );
+}
+
+function isSecretLikeKey(key: string): boolean {
+  return /(api[_-]?key|secret|token|password|credential)/i.test(key);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

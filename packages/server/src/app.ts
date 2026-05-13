@@ -119,7 +119,21 @@ export async function createApp(config: Config) {
 
     chatProviderFactory: asFunction(
       (cradle: AppCradle) =>
-        new ChatProviderFactory(cradle.encryptionService, cradle.logger),
+        new ChatProviderFactory(cradle.encryptionService, cradle.logger, {
+          geminiApiKey: cradle.config.GEMINI_API_KEY,
+          geminiVertex:
+            cradle.config.GEMINI_VERTEX_API_KEY &&
+            cradle.config.GEMINI_VERTEX_PROJECT
+              ? {
+                  apiKey: cradle.config.GEMINI_VERTEX_API_KEY,
+                  project: cradle.config.GEMINI_VERTEX_PROJECT,
+                  location: cradle.config.GEMINI_VERTEX_LOCATION,
+                }
+              : undefined,
+          aiRecruitmentMcpUrl: cradle.config.AI_RECRUITMENT_MCP_URL,
+          aiRecruitmentMcpAuthToken:
+            cradle.config.AI_RECRUITMENT_MCP_AUTH_TOKEN,
+        }),
     ).setLifetime(Lifetime.SINGLETON),
 
     sessionFactory: asClass(SessionFactory).setLifetime(Lifetime.SINGLETON),

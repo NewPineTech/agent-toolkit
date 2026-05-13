@@ -15,6 +15,10 @@ export const workspaces = pgTable("workspaces", {
   providerAgentId: text("provider_agent_id").notNull(),
   providerApiKey: text("provider_api_key").notNull(),
   providerBaseUrl: text("provider_base_url").notNull(),
+  providerConfig: jsonb("provider_config")
+    .notNull()
+    .$type<Record<string, unknown>>()
+    .default({}),
   allowedDomains: text("allowed_domains").array().notNull().default([]),
   authMode: text("auth_mode").notNull().default("anonymous"),
   authSecret: text("auth_secret"),

@@ -13,6 +13,9 @@ export interface SessionStore {
   /** Store the provider's session ID after first message creates it. */
   updateProviderSessionId(id: string, providerSessionId: string): Promise<void>;
 
+  /** Update session metadata such as provider conversation memory. */
+  updateMetadata(id: string, metadata: Record<string, unknown>): Promise<void>;
+
   /** Find active session by workspace + user fingerprint. */
   findByWorkspaceAndFingerprint(
     workspaceId: string,

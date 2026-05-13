@@ -13,6 +13,7 @@ export interface WorkspaceRow {
   provider_agent_id: string;
   provider_api_key: string;
   provider_base_url: string;
+  provider_config: Record<string, unknown>;
   allowed_domains: string[];
   auth_mode: string;
   auth_secret: string | null;

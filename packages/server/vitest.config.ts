@@ -1,6 +1,15 @@
 import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@agent-toolkit/langgraph": resolve(
+        import.meta.dirname,
+        "../langgraph/src/index.ts",
+      ),
+    },
+  },
   test: {
     globals: true,
     environment: "node",

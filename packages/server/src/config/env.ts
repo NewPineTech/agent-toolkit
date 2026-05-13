@@ -12,6 +12,12 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
   ENCRYPTION_KEY: z.string().min(32),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_VERTEX_API_KEY: z.string().min(1).optional(),
+  GEMINI_VERTEX_PROJECT: z.string().min(1).optional(),
+  GEMINI_VERTEX_LOCATION: z.string().min(1).default("global"),
+  AI_RECRUITMENT_MCP_URL: z.string().url().optional(),
+  AI_RECRUITMENT_MCP_AUTH_TOKEN: z.string().min(1).optional(),
 
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default("0.0.0.0"),

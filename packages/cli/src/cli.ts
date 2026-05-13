@@ -106,6 +106,8 @@ function addWorkspaceCommands(program: Command, context: CliContext) {
     .requiredOption("--api-key <key>", "Provider API key")
     .requiredOption("--base-url <url>", "Provider base URL")
     .option("--provider-type <type>", "Provider type", "ragflow")
+    .option("--provider-config <json>", "Provider config JSON")
+    .option("--provider-config-file <path>", "Provider config JSON file")
     .option("--domains <domains>", "Comma-separated allowed origins", "")
     .option(
       "--auth-mode <mode>",
@@ -136,6 +138,8 @@ function addWorkspaceCommands(program: Command, context: CliContext) {
     .option("--api-key <key>", "Provider API key")
     .option("--base-url <url>", "Provider base URL")
     .option("--provider-type <type>", "Provider type")
+    .option("--provider-config <json>", "Provider config JSON")
+    .option("--provider-config-file <path>", "Provider config JSON file")
     .option("--domains <domains>", "Comma-separated allowed origins")
     .option("--auth-mode <mode>", "anonymous | authenticated | both")
     .option(

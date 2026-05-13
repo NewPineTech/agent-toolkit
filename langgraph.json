@@ -1,0 +1,7 @@
+{
+  "node_version": "22",
+  "env": ".env",
+  "graphs": {
+    "agent_toolkit": "./packages/langgraph/src/dev-graph.ts:graph"
+  }
+}

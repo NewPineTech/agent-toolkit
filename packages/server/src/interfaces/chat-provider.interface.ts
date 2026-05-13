@@ -1,9 +1,11 @@
 import type { ChatStreamEvent } from "@agent-toolkit/types";
+import type { RuntimeMessage } from "@agent-toolkit/langgraph";
 
 export interface ChatProviderConfig {
   baseUrl: string;
   apiKey: string;
   agentId: string;
+  providerConfig?: Record<string, unknown>;
 }
 
 export interface ChatProvider {
@@ -15,5 +17,11 @@ export interface ChatProvider {
     config: ChatProviderConfig,
     sessionId: string,
     message: string,
+    context?: ChatProviderMessageContext,
   ): AsyncGenerator<ChatStreamEvent, void, undefined>;
+}
+
+export interface ChatProviderMessageContext {
+  messages: RuntimeMessage[];
+  memorySummary?: string;
 }

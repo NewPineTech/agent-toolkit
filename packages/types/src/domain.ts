@@ -6,6 +6,7 @@ export interface Workspace {
   providerAgentId: string;
   providerApiKey: string;
   providerBaseUrl: string;
+  providerConfig: Record<string, unknown>;
   allowedDomains: string[];
   authMode: AuthMode;
   authSecret: string | null;
