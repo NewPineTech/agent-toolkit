@@ -11,13 +11,14 @@ A production-grade toolkit for embedding RAGFlow-powered chat widgets into web a
 
 ## Packages
 
-| Package                 | Description                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `@agent-toolkit/core`   | Runtime-independent shared logic for validation, encryption, provider URLs, and embed templates |
-| `@agent-toolkit/server` | Fastify backend — session management, auth, rate limiting, SSE proxy                            |
-| `@agent-toolkit/widget` | React hook + drop-in chat component                                                             |
-| `@agent-toolkit/cli`    | End-user CLI for workspace, widget, chat, usage, session, and ingest features                   |
-| `@agent-toolkit/types`  | Shared TypeScript types, enums, and DTOs                                                        |
+| Package                    | Description                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `@agent-toolkit/core`      | Runtime-independent shared logic for validation, encryption, provider URLs, and embed templates                               |
+| `@agent-toolkit/langgraph` | Runtime-only LangGraph workflows for Gemini `gemini-2.5-flash-lite`, retrieval, tools, policy, verification, and confirmation |
+| `@agent-toolkit/server`    | Fastify backend — session management, auth, rate limiting, SSE proxy                                                          |
+| `@agent-toolkit/widget`    | React hook + drop-in chat component                                                                                           |
+| `@agent-toolkit/cli`       | End-user CLI for workspace, widget, chat, usage, session, and ingest features                                                 |
+| `@agent-toolkit/types`     | Shared TypeScript types, enums, and DTOs                                                                                      |
 
 ### Tools
 
@@ -75,12 +76,22 @@ cp .env.example .env
 
 Required variables:
 
-| Variable         | Description                                                            |
-| ---------------- | ---------------------------------------------------------------------- |
-| `DATABASE_URL`   | PostgreSQL connection string                                           |
-| `REDIS_URL`      | Redis connection string                                                |
-| `JWT_SECRET`     | HMAC secret for session tokens (min 32 chars)                          |
-| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (64-character hex string) |
+| Variable         | Description                                                                                    |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`   | PostgreSQL connection string                                                                   |
+| `REDIS_URL`      | Redis connection string                                                                        |
+| `JWT_SECRET`     | HMAC secret for session tokens (min 32 chars)                                                  |
+| `ENCRYPTION_KEY` | AES-256 key for encrypting provider API keys (64-character hex string)                         |
+| `GEMINI_API_KEY` | Required for `langgraph` workspaces unless using Vertex AI; used only by the server for Gemini |
+
+LangGraph can use Gemini through Vertex AI instead of AI Studio by setting `GEMINI_VERTEX_API_KEY`, `GEMINI_VERTEX_PROJECT`, and optionally `GEMINI_VERTEX_LOCATION` (`global` by default). When both are configured, the Vertex AI settings take precedence for LangGraph only.
+
+Optional LangGraph MCP variables:
+
+| Variable                        | Description                                                      |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `AI_RECRUITMENT_MCP_URL`        | Enables ai-recruitment MCP tools for LangGraph when set          |
+| `AI_RECRUITMENT_MCP_AUTH_TOKEN` | Bearer token for the ai-recruitment MCP server, kept server-side |
 
 Optional variables (with defaults):
 
@@ -263,11 +274,11 @@ agent-toolkit/
 
 ### Multi-Tenant Design
 
-Each workspace maps to a RAGFlow agent with its own encrypted API key, allowed domains, rate limits, and auth configuration.
+Each workspace maps to a chat provider with its own encrypted provider key, provider config, allowed domains, rate limits, and auth configuration. `ragflow` workspaces proxy directly to a RAGFlow agent. `langgraph` workspaces run the local `@agent-toolkit/langgraph` runtime, use Gemini `gemini-2.5-flash-lite` for generation, and can use RAGFlow as a retrieval capability.
 
 ```
 workspaces table
-  id | provider_type | agent_id | api_key (AES-256-GCM encrypted) | allowed_domains | auth_mode | rate_limit_config
+  id | provider_type | agent_id | api_key (AES-256-GCM encrypted) | provider_config | allowed_domains | auth_mode | rate_limit_config
 ```
 
 ### Authentication Modes
@@ -288,6 +299,7 @@ All external dependencies sit behind interfaces. Every complex object is created
 Interfaces (10)            Adapters                        Factories (5)
 ────────────────           ──────────────────              ──────────────────
 ChatProvider          ───► RagflowAdapter                  ChatProviderFactory
+                      └──► LangGraphAdapter
 SessionStore          ───► PostgresSessionStore            SessionFactory
 SessionCache          ───► RedisSessionCache               TokenFactory
                            InMemorySessionCache            WorkspaceFactory
@@ -541,6 +553,20 @@ agent-toolkit usage report ws_acme_001
 agent-toolkit sessions list ws_acme_001 --active
 ```
 
+For LangGraph, keep `--api-key` as the encrypted retrieval/provider key, set `GEMINI_API_KEY` on the server, and pass non-secret provider config. If `AI_RECRUITMENT_MCP_URL` and `AI_RECRUITMENT_MCP_AUTH_TOKEN` are set on the server, LangGraph can also call read-only ai-recruitment MCP tools during complex/tool routes:
+
+```bash
+agent-toolkit workspace create \
+  --id ws_langgraph_001 \
+  --provider-type langgraph \
+  --agent-id local \
+  --api-key ragflow-retrieval-key \
+  --base-url https://ragflow.example.com \
+  --provider-config '{"model":{"provider":"gemini","model":"gemini-2.5-flash-lite"},"ragflow":{"baseUrl":"https://ragflow.example.com","datasetIds":["kb_1"],"topK":5},"tools":{"enabled":["docs.search"]}}' \
+  --domains "https://acme.com" \
+  --auth-mode anonymous
+```
+
 In the production Docker image, the CLI is also linked as `agent-toolkit` and `atk` inside the server container:
 
 ```bash
@@ -555,6 +581,7 @@ atk tui
 ```
 
 In the production Docker image:
+
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk tui
 ```
@@ -583,10 +610,11 @@ agent-toolkit chat ask ws_acme_001 "What can you help with?" \
 ```
 workspaces
 ├── id                  text PK          — public workspace identifier (e.g. "ws_abc123")
-├── provider_type       text             — "ragflow" (extensible to "dify", "langflow")
-├── provider_agent_id   text             — RAGFlow agent UUID
+├── provider_type       text             — "ragflow" | "langgraph" (extensible to "dify", "langflow")
+├── provider_agent_id   text             — provider agent/thread identifier; "local" is valid for LangGraph
 ├── provider_api_key    text             — AES-256-GCM encrypted API key
-├── provider_base_url   text             — RAGFlow server URL
+├── provider_base_url   text             — provider base URL; RAGFlow retrieval URL for LangGraph
+├── provider_config     jsonb            — non-secret provider settings
 ├── allowed_domains     text[]           — origin allowlist for anonymous auth
 ├── auth_mode           text             — "anonymous" | "authenticated" | "both"
 ├── auth_secret         text?            — encrypted HMAC secret (authenticated mode)

@@ -32,7 +32,7 @@ Write TypeScript as ESM. Keep shared behavior in `@agent-toolkit/core` and `@age
 
 ## Testing Guidelines
 
-Vitest is the primary test runner. Place tests beside source files as `*.test.ts` or `*.test.tsx`. Widget component tests use React Testing Library and happy-dom; Storybook stories live as `*.stories.tsx`. Run Storybook tests with `pnpm --filter @agent-toolkit/widget run test:storybook`.
+Vitest is the primary test runner. Place tests in a `__test__/` folder under the source folder they cover, using `*.test.ts` or `*.test.tsx` filenames. Widget component tests use React Testing Library and happy-dom; Storybook stories live as `*.stories.tsx`. Run Storybook tests with `pnpm --filter @agent-toolkit/widget run test:storybook`.
 
 Run relevant package tests before broader workspace validation. For server changes touching env, auth, storage, or origin checks, include focused route/adapter tests and verify `NODE_ENV=test` behavior.
 

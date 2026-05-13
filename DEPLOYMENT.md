@@ -79,7 +79,7 @@ If `.env.prod` already exists, only `PORT` is updated — existing secrets are p
 
 **6. Build the server and Storybook images**
 
-Runs `docker compose build server` using the production multi-stage `Dockerfile`, then `docker compose build storybook` passing `WIDGET_API_URL` as a Docker build arg. The server image builds the workspace packages in dependency order: `types`, `core`, `widget`, `server`, then `cli`.
+Runs `docker compose build server` using the production multi-stage `Dockerfile`, then `docker compose build storybook` passing `WIDGET_API_URL` as a Docker build arg. The server image builds the workspace packages in dependency order: `types`, `core`, `langgraph`, `widget`, `server`, then `cli`.
 
 **7. Start PostgreSQL and Redis**
 
@@ -231,6 +231,20 @@ agent-toolkit workspace create \
 
 Run with `--help` to see all available options. The operation is idempotent — re-running with the same `--id` updates the existing workspace.
 
+For a LangGraph workspace, set `GEMINI_API_KEY` on the server and keep Gemini secrets out of `provider_config`:
+
+```bash
+agent-toolkit workspace create \
+  --id ws_langgraph_001 \
+  --provider-type langgraph \
+  --agent-id local \
+  --api-key ragflow-retrieval-key \
+  --base-url https://ragflow.example.com \
+  --provider-config '{"model":{"provider":"gemini","model":"gemini-2.5-flash-lite"},"ragflow":{"baseUrl":"https://ragflow.example.com","datasetIds":["kb_1"]},"tools":{"enabled":["docs.search"]}}' \
+  --domains "https://acme.com" \
+  --auth-mode anonymous
+```
+
 ### 6. Verify
 
 ```bash
@@ -377,27 +391,33 @@ The API key is encrypted with AES-256 before being stored. Running with the same
 
 Required variables (must be set in `.env.prod`):
 
-| Variable            | Description                                                            |
-| ------------------- | ---------------------------------------------------------------------- |
-| `DATABASE_URL`      | PostgreSQL connection string                                           |
-| `REDIS_URL`         | Redis connection string                                                |
-| `JWT_SECRET`        | HMAC secret for session tokens (min 32 chars)                          |
-| `ENCRYPTION_KEY`    | AES-256 key for encrypting provider API keys (64-character hex string) |
-| `POSTGRES_PASSWORD` | Password for the PostgreSQL user                                       |
+| Variable                        | Description                                                            |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| `DATABASE_URL`                  | PostgreSQL connection string                                           |
+| `REDIS_URL`                     | Redis connection string                                                |
+| `JWT_SECRET`                    | HMAC secret for session tokens (min 32 chars)                          |
+| `ENCRYPTION_KEY`                | AES-256 key for encrypting provider API keys (64-character hex string) |
+| `GEMINI_API_KEY`                | Required for `langgraph` workspaces unless using Vertex AI             |
+| `GEMINI_VERTEX_API_KEY`         | Optional Vertex AI Gemini key for LangGraph                            |
+| `GEMINI_VERTEX_PROJECT`         | Optional Vertex AI project for LangGraph                               |
+| `GEMINI_VERTEX_LOCATION`        | Optional Vertex AI location for LangGraph; defaults to `global`        |
+| `AI_RECRUITMENT_MCP_AUTH_TOKEN` | Optional bearer token for LangGraph ai-recruitment MCP tools           |
+| `POSTGRES_PASSWORD`             | Password for the PostgreSQL user                                       |
 
 Optional variables (with defaults):
 
-| Variable              | Default                 | Description                                   |
-| --------------------- | ----------------------- | --------------------------------------------- |
-| `PORT`                | `3000`                  | Host port exposed by the server container     |
-| `HOST`                | `0.0.0.0`               | Bind address                                  |
-| `POSTGRES_DB`         | `agent_toolkit`         | PostgreSQL database name                      |
-| `POSTGRES_USER`       | `agent_toolkit`         | PostgreSQL username                           |
-| `LOG_LEVEL`           | `info`                  | `fatal` `error` `warn` `info` `debug` `trace` |
-| `SESSION_TTL_MINUTES` | `30`                    | Widget session lifetime                       |
-| `CORS_MAX_AGE`        | `86400`                 | CORS preflight cache (seconds)                |
-| `SHUTDOWN_TIMEOUT_MS` | `30000`                 | Graceful shutdown timeout                     |
-| `NODE_ENV`            | `development`           | `development` `production` `test`             |
-| `STORYBOOK_PORT`      | `6006`                  | Host port for the Storybook container         |
-| `WIDGET_API_URL`      | `http://localhost:3000` | API URL baked into the Storybook build        |
-| `IMAGE_TAG`           | `latest`                | Docker image tag applied to built images      |
+| Variable                 | Default                 | Description                                   |
+| ------------------------ | ----------------------- | --------------------------------------------- |
+| `PORT`                   | `3000`                  | Host port exposed by the server container     |
+| `HOST`                   | `0.0.0.0`               | Bind address                                  |
+| `AI_RECRUITMENT_MCP_URL` | unset                   | Optional ai-recruitment MCP URL for LangGraph |
+| `POSTGRES_DB`            | `agent_toolkit`         | PostgreSQL database name                      |
+| `POSTGRES_USER`          | `agent_toolkit`         | PostgreSQL username                           |
+| `LOG_LEVEL`              | `info`                  | `fatal` `error` `warn` `info` `debug` `trace` |
+| `SESSION_TTL_MINUTES`    | `30`                    | Widget session lifetime                       |
+| `CORS_MAX_AGE`           | `86400`                 | CORS preflight cache (seconds)                |
+| `SHUTDOWN_TIMEOUT_MS`    | `30000`                 | Graceful shutdown timeout                     |
+| `NODE_ENV`               | `development`           | `development` `production` `test`             |
+| `STORYBOOK_PORT`         | `6006`                  | Host port for the Storybook container         |
+| `WIDGET_API_URL`         | `http://localhost:3000` | API URL baked into the Storybook build        |
+| `IMAGE_TAG`              | `latest`                | Docker image tag applied to built images      |
