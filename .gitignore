@@ -44,6 +44,10 @@ storybook-static
 .beads/
 .ccu/
 
+.spikes/
+history/
+docs/plans/
+
 index.html
 
 example.script.txt
