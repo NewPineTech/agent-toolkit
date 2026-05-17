@@ -51,3 +51,6 @@ docs/plans/
 index.html
 
 example.script.txt
+
+.agents/
+.langgraph_api/
