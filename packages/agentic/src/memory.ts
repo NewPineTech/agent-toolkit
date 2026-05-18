@@ -88,7 +88,7 @@ export function buildMemoryContext(
 }
 
 export function buildCurrentExchangeMessages(state: AgenticState): AgenticMessage[] {
-  const currentExchange = [
+  const currentExchange: AgenticMessage[] = [
     { role: "user" as const, content: state.message.trim() },
   ];
 

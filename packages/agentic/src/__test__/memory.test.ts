@@ -29,6 +29,8 @@ describe("short memory", () => {
       message: "hello",
       messages: [],
       memorySummary: undefined,
+      turnsSinceSummary: 0,
+      summaryBufferMessages: [],
       standaloneQuery: "hello",
       selectedIntents: [],
       workflowResults: [],
