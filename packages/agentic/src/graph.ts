@@ -2,9 +2,7 @@ import { END, MemorySaver, START, StateGraph } from "@langchain/langgraph";
 import { AGENTIC_INTENTS } from "./constants.js";
 import { loadPrompt } from "./prompt-loader.js";
 import {
-  appendFinalExchange,
-  buildFinalExchangeMessages,
-  summarizeConversation,
+  buildSavedMemoryState,
   trimConversationMessages,
   validateInput,
 } from "./memory.js";
@@ -25,12 +23,11 @@ function validateInputNode(state: AgenticState) {
   return { message: state.message.trim() };
 }
 
-async function loadShortMemoryNode(state: AgenticState) {
+function loadShortMemoryNode(state: AgenticState) {
   const trimmed = trimConversationMessages(state.messages);
   return {
     messages: trimmed,
-    memorySummary:
-      state.memorySummary ?? (await summarizeConversation(state.messages)),
+    memorySummary: state.memorySummary,
     workflowResults: [],
     warnings: [],
     finalAnswer: undefined,
@@ -165,15 +162,7 @@ async function synthesizeFinalAnswerNode(state: AgenticState) {
 }
 
 async function saveShortMemoryNode(state: AgenticState) {
-  const messages = appendFinalExchange(state);
-  const summaryMessages = buildFinalExchangeMessages(state);
-  return {
-    messages,
-    memorySummary:
-      (await summarizeConversation(summaryMessages, {
-        previousSummary: state.memorySummary,
-      })) ?? state.memorySummary,
-  };
+  return buildSavedMemoryState(state);
 }
 
 function uniqueWarnings(warnings: string[]): string[] {

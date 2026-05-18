@@ -19,7 +19,7 @@ export interface AgenticState {
   message: string;
   messages: AgenticMessage[];
   memorySummary: string | undefined;
-  turnsSinceSummary: number;
+  messagesSinceSummary: number;
   summaryBufferMessages: AgenticMessage[];
   standaloneQuery: string | undefined;
   selectedIntents: AgenticIntent[];
@@ -53,7 +53,9 @@ export const AgenticStateAnnotation = Annotation.Root({
   memorySummary: Annotation<string | undefined>(
     overwriteWithDefault<string | undefined>(() => undefined),
   ),
-  turnsSinceSummary: Annotation<number>(overwriteWithDefault<number>(() => 0)),
+  messagesSinceSummary: Annotation<number>(
+    overwriteWithDefault<number>(() => 0),
+  ),
   summaryBufferMessages: Annotation<AgenticMessage[]>(
     overwriteWithDefault<AgenticMessage[]>(() => []),
   ),
@@ -77,7 +79,7 @@ export function createInitialAgenticState(message: string): AgenticState {
     message,
     messages: [],
     memorySummary: undefined,
-    turnsSinceSummary: 0,
+    messagesSinceSummary: 0,
     summaryBufferMessages: [],
     standaloneQuery: undefined,
     selectedIntents: [],

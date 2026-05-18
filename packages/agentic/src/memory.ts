@@ -117,8 +117,8 @@ export function appendFinalExchange(state: AgenticState): AgenticMessage[] {
   return trimConversationMessages(buildFinalExchangeMessages(state));
 }
 
-export function shouldSummarizeMemory(turnsSinceSummary: number): boolean {
-  return turnsSinceSummary >= AGENTIC_DEFAULTS.memory.summaryTriggerTurns;
+export function shouldSummarizeMemory(messagesSinceSummary: number): boolean {
+  return messagesSinceSummary >= AGENTIC_DEFAULTS.memory.summaryTriggerMessages;
 }
 
 export async function buildSavedMemoryState(
@@ -127,18 +127,26 @@ export async function buildSavedMemoryState(
 ): Promise<
   Pick<
     AgenticState,
-    "messages" | "memorySummary" | "turnsSinceSummary" | "summaryBufferMessages"
+    | "messages"
+    | "memorySummary"
+    | "messagesSinceSummary"
+    | "summaryBufferMessages"
   >
 > {
+  const currentExchangeMessages = buildCurrentExchangeMessages(state);
   const messages = appendFinalExchange(state);
-  const summaryBufferMessages = buildSummaryBufferMessages(state);
-  const turnsSinceSummary = state.turnsSinceSummary + 1;
+  const summaryBufferMessages = [
+    ...state.summaryBufferMessages,
+    ...currentExchangeMessages,
+  ].slice(-AGENTIC_DEFAULTS.memory.summaryTriggerMessages);
+  const messagesSinceSummary =
+    state.messagesSinceSummary + currentExchangeMessages.length;
 
-  if (!shouldSummarizeMemory(turnsSinceSummary)) {
+  if (!shouldSummarizeMemory(messagesSinceSummary)) {
     return {
       messages,
       memorySummary: state.memorySummary,
-      turnsSinceSummary,
+      messagesSinceSummary,
       summaryBufferMessages,
     };
   }
@@ -152,7 +160,7 @@ export async function buildSavedMemoryState(
     return {
       messages,
       memorySummary: state.memorySummary,
-      turnsSinceSummary,
+      messagesSinceSummary,
       summaryBufferMessages,
     };
   }
@@ -160,7 +168,7 @@ export async function buildSavedMemoryState(
   return {
     messages,
     memorySummary,
-    turnsSinceSummary: 0,
+    messagesSinceSummary: 0,
     summaryBufferMessages: [],
   };
 }
