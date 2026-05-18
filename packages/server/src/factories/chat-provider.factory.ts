@@ -7,6 +7,7 @@ import type {
 import type { EncryptionService } from "../interfaces/encryption-service.interface.js";
 import type { Logger } from "../interfaces/logger.interface.js";
 import { RagflowAdapter } from "../adapters/chat/ragflow.adapter.js";
+import { LangGraphAdapter } from "../adapters/chat/langgraph.adapter.js";
 
 export class ChatProviderFactory {
   private readonly adapters = new Map<string, ChatProvider>();
@@ -37,6 +38,9 @@ export class ChatProviderFactory {
     switch (providerType) {
       case ProviderType.RAGFLOW:
         adapter = new RagflowAdapter(this.logger);
+        break;
+      case ProviderType.LANGGRAPH:
+        adapter = new LangGraphAdapter(this.logger);
         break;
       default:
         throw new Error(`Unsupported provider type: ${providerType}`);

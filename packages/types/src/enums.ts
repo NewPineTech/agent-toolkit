@@ -2,6 +2,7 @@ export const ProviderType = {
   RAGFLOW: "ragflow",
   DIFY: "dify",
   LANGFLOW: "langflow",
+  LANGGRAPH: "langgraph",
 } as const;
 
 export type ProviderType = (typeof ProviderType)[keyof typeof ProviderType];

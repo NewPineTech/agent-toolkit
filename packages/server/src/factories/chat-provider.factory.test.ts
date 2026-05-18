@@ -57,6 +57,23 @@ describe("ChatProviderFactory", () => {
     expect(p1).toBe(p2);
   });
 
+  it("creates a provider and config for langgraph workspace", () => {
+    const factory = new ChatProviderFactory(mockEncryption, mockLogger);
+    const { provider, config } = factory.create({
+      ...workspace,
+      providerType: ProviderType.LANGGRAPH,
+      providerBaseUrl: "https://langgraph.test",
+      providerAgentId: "hr_assistant",
+    });
+
+    expect(provider).toBeDefined();
+    expect(config).toEqual({
+      baseUrl: "https://langgraph.test",
+      apiKey: "sk-secret",
+      agentId: "hr_assistant",
+    });
+  });
+
   it("throws for unsupported provider type", () => {
     const factory = new ChatProviderFactory(mockEncryption, mockLogger);
     expect(() =>
