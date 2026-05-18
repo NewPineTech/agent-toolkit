@@ -15,6 +15,10 @@ const promptNames = [
 
 const packageRoot = join(import.meta.dirname, "..", "..");
 
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 async function buildAgenticPackage(): Promise<void> {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -72,6 +76,34 @@ describe("prompt assets", () => {
 
     expect(prompt).not.toContain("Minh tom tat nhanh giup ban nhe");
     expect(prompt).toContain("Start directly with the answer");
+  });
+
+  it("guards personal identity questions from assistant self-identification", async () => {
+    const [routePrompt, freeChatPrompt, finalAnswerPrompt] = await Promise.all([
+      readFile(join(packageRoot, "src", "prompts", "route-intent.md"), "utf8"),
+      readFile(join(packageRoot, "src", "prompts", "free-chat.md"), "utf8"),
+      readFile(
+        join(packageRoot, "src", "prompts", "synthesize-final-answer.md"),
+        "utf8",
+      ),
+    ]);
+    const normalizedFreeChatPrompt = normalizeWhitespace(freeChatPrompt);
+
+    expect(routePrompt).toContain(
+      'User identity questions such as "tôi là ai"',
+    );
+    expect(freeChatPrompt).toContain("Personal Identity Questions");
+    expect(freeChatPrompt).toContain("tôi là ai");
+    expect(normalizedFreeChatPrompt).toContain(
+      "treat it as a question about the user, not about the assistant",
+    );
+    expect(freeChatPrompt).toContain(
+      "Do not answer with the assistant identity",
+    );
+    expect(finalAnswerPrompt).toContain("Personal Identity Questions");
+    expect(finalAnswerPrompt).toContain(
+      "Do not turn a user identity question into an assistant self-introduction",
+    );
   });
 
   it("prevents progressive answers for process step-list questions", async () => {

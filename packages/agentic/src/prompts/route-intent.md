@@ -19,6 +19,7 @@ work in the same turn.
 Use for lightweight conversation only:
 
 - Greetings, thanks, or questions about the assistant itself.
+- User identity questions such as "tôi là ai", "who am I", or "do you know me".
 - General, high-level company culture or values questions.
 - Social follow-ups that do not require factual lookup.
 

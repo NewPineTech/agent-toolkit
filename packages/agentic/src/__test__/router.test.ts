@@ -9,6 +9,12 @@ describe("intent router", () => {
     ]);
   });
 
+  it("routes personal identity questions to free chat", async () => {
+    await expect(routeIntent("tôi là ai")).resolves.toEqual([
+      AGENTIC_INTENTS.freeChat,
+    ]);
+  });
+
   it("routes HR knowledge questions", async () => {
     await expect(routeIntent("leave policy la gi")).resolves.toEqual([
       AGENTIC_INTENTS.hrKnowledgeQa,

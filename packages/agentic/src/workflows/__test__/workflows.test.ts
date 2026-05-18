@@ -52,6 +52,29 @@ describe("intent subgraphs", () => {
     );
   });
 
+  it("passes personal identity guard to free chat model", async () => {
+    const generateModelResponse = vi
+      .spyOn(modelModule, "generateModelResponse")
+      .mockResolvedValue({
+        content:
+          "Minh chua co du thong tin trong phien chat nay de xac dinh ban la ai.",
+        warnings: [],
+      });
+
+    await freeChatGraph.invoke({
+      message: "tôi là ai",
+      standaloneQuery: "tôi là ai",
+    });
+
+    expect(generateModelResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining("Personal Identity Questions"),
+        prompt: expect.stringContaining("Current message:\ntôi là ai"),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("runs HR knowledge QA subgraph", async () => {
     const result = await hrKnowledgeQaGraph.invoke({
       message: "leave policy",
