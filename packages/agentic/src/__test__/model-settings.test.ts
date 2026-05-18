@@ -57,7 +57,7 @@ const expectedSettings: ExpectedModelSettings[] = [
 
 describe("agentic node model settings", () => {
   it("centralizes the default Vertex model", () => {
-    expect(AGENTIC_DEFAULTS.model.name).toBe("gemini-2.5-flash");
+    expect(AGENTIC_DEFAULTS.model.name).toBe("gemini-3.1-flash-lite");
   });
 
   it.each(expectedSettings)(
