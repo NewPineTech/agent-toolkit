@@ -10,6 +10,8 @@ describe("agentic state contract", () => {
       message: "Xin chao",
       messages: [],
       memorySummary: undefined,
+      turnsSinceSummary: 0,
+      summaryBufferMessages: [],
       standaloneQuery: undefined,
       selectedIntents: [],
       workflowResults: [],
@@ -43,7 +45,7 @@ describe("agentic constants", () => {
         };
         memory: {
           messageWindowSize: number;
-          summaryTriggerMessages: number;
+          summaryTriggerTurns: number;
         };
       };
     };
@@ -60,7 +62,7 @@ describe("agentic constants", () => {
       },
       memory: {
         messageWindowSize: 6,
-        summaryTriggerMessages: expect.any(Number),
+        summaryTriggerTurns: 6,
       },
     });
   });

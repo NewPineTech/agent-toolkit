@@ -27,7 +27,7 @@ export async function summarizeConversation(
   messages: AgenticMessage[],
   options: ConversationSummaryOptions = {},
 ): Promise<string | undefined> {
-  if (messages.length < AGENTIC_DEFAULTS.memory.summaryTriggerMessages) {
+  if (messages.length === 0) {
     return undefined;
   }
 
@@ -87,24 +87,82 @@ export function buildMemoryContext(
     .join("\n\n");
 }
 
-export function buildFinalExchangeMessages(state: AgenticState): AgenticMessage[] {
-  const nextMessages = [
-    ...trimConversationMessages(state.messages),
+export function buildCurrentExchangeMessages(state: AgenticState): AgenticMessage[] {
+  const currentExchange = [
     { role: "user" as const, content: state.message.trim() },
   ];
 
   if (state.finalAnswer?.trim()) {
-    nextMessages.push({
+    currentExchange.push({
       role: "assistant",
       content: state.finalAnswer.trim(),
     });
   }
 
-  return nextMessages;
+  return currentExchange;
+}
+
+export function buildFinalExchangeMessages(state: AgenticState): AgenticMessage[] {
+  return [
+    ...trimConversationMessages(state.messages),
+    ...buildCurrentExchangeMessages(state),
+  ];
+}
+
+export function buildSummaryBufferMessages(state: AgenticState): AgenticMessage[] {
+  return [...state.summaryBufferMessages, ...buildCurrentExchangeMessages(state)];
 }
 
 export function appendFinalExchange(state: AgenticState): AgenticMessage[] {
   return trimConversationMessages(buildFinalExchangeMessages(state));
+}
+
+export function shouldSummarizeMemory(turnsSinceSummary: number): boolean {
+  return turnsSinceSummary >= AGENTIC_DEFAULTS.memory.summaryTriggerTurns;
+}
+
+export async function buildSavedMemoryState(
+  state: AgenticState,
+  options: ConversationSummaryOptions = {},
+): Promise<
+  Pick<
+    AgenticState,
+    "messages" | "memorySummary" | "turnsSinceSummary" | "summaryBufferMessages"
+  >
+> {
+  const messages = appendFinalExchange(state);
+  const summaryBufferMessages = buildSummaryBufferMessages(state);
+  const turnsSinceSummary = state.turnsSinceSummary + 1;
+
+  if (!shouldSummarizeMemory(turnsSinceSummary)) {
+    return {
+      messages,
+      memorySummary: state.memorySummary,
+      turnsSinceSummary,
+      summaryBufferMessages,
+    };
+  }
+
+  const memorySummary = await summarizeConversation(summaryBufferMessages, {
+    ...options,
+    previousSummary: state.memorySummary,
+  });
+
+  if (!memorySummary) {
+    return {
+      messages,
+      memorySummary: state.memorySummary,
+      turnsSinceSummary,
+      summaryBufferMessages,
+    };
+  }
+
+  return {
+    messages,
+    memorySummary,
+    turnsSinceSummary: 0,
+    summaryBufferMessages: [],
+  };
 }
 
 function formatMemoryMessage(message: AgenticMessage): string {
