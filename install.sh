@@ -190,9 +190,9 @@ echo ""
 COMPOSE="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
 
 # ── Build production images ────────────────────────────────────────
-info "Building server image..."
-$COMPOSE build server
-ok "Server image built"
+info "Building production runtime images..."
+$COMPOSE build server langgraph langstudio
+ok "Production runtime images built"
 echo ""
 
 info "Building Storybook image (WIDGET_API_URL=$WIDGET_API_URL)..."
