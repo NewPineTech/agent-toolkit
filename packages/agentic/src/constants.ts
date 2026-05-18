@@ -40,6 +40,6 @@ export const AGENTIC_DEFAULTS = {
   },
   memory: {
     messageWindowSize: 6,
-    summaryTriggerMessages: 7,
+    summaryTriggerTurns: 6,
   },
 } as const;
