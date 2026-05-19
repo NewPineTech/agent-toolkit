@@ -28,6 +28,67 @@ export const AGENTIC_RETRIEVER_PROFILES = {
   },
 } as const;
 
+export const AGENTIC_MCP_USAGE_MODES = {
+  retrievalContext: "retrieval_context",
+  langGraphToolLoop: "langgraph_tool_loop",
+} as const;
+
+export const AGENTIC_MCP_RUNTIME_TARGETS = {
+  local: "local",
+  docker: "docker",
+} as const;
+
+export const AGENTIC_MCP_REGISTRY = {
+  aiRecruitment: {
+    id: "ai-recruitment",
+    transport: "streamable_http",
+    mode: AGENTIC_MCP_USAGE_MODES.retrievalContext,
+    defaultRuntimeTarget: AGENTIC_MCP_RUNTIME_TARGETS.local,
+    runtimeTargets: {
+      local: {
+        endpointUrl: "http://localhost:3005/api/v1/mcp",
+      },
+      docker: {
+        endpointUrl: "http://host.docker.internal:3005/api/v1/mcp",
+      },
+    },
+    protocolVersion: "2025-11-25",
+    searchLimit: 3,
+    timeoutMs: 4000,
+    maxContentChars: 1200,
+    allowedTools: {
+      listUserGuidePages: {
+        name: "list_user_guide_pages",
+        title: "List AI Recruitment Platform guide pages",
+        description:
+          "List available AI Recruitment Platform guide pages with headings and citations.",
+        readOnly: true,
+      },
+      getUserGuidePage: {
+        name: "get_user_guide_page",
+        title: "Get AI Recruitment Platform guide page",
+        description:
+          "Return the complete markdown body for one AI Recruitment Platform guide page by slug.",
+        readOnly: true,
+      },
+      searchUserGuide: {
+        name: "search_user_guide",
+        title: "Search AI Recruitment Platform guide",
+        description:
+          "Search the Vietnamese AI Recruitment Platform guide and return section-level results with citations.",
+        readOnly: true,
+      },
+      getUserGuideSection: {
+        name: "get_user_guide_section",
+        title: "Get AI Recruitment Platform guide section",
+        description:
+          "Return one section from an AI Recruitment Platform guide page by slug and heading.",
+        readOnly: true,
+      },
+    },
+  },
+} as const;
+
 export const AGENTIC_DEFAULTS = {
   model: {
     provider: AGENTIC_MODEL_PROVIDER_TYPES.googleVertexAI,

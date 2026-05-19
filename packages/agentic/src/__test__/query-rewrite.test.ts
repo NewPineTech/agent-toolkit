@@ -24,11 +24,9 @@ describe("query rewrite", () => {
   });
 
   it("uses the configured model for contextual rewriting when available", async () => {
-    const invoke = vi
-      .fn()
-      .mockResolvedValue({
-        content: "What is the annual leave approval flow?",
-      });
+    const invoke = vi.fn().mockResolvedValue({
+      content: "What is the annual leave approval flow?",
+    });
 
     const rewritten = await rewriteQueryFromMemory(
       {

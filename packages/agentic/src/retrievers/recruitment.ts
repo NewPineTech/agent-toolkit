@@ -1,34 +1,26 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { AGENTIC_MCP_REGISTRY } from "../constants.js";
 import { rankDocuments, type RetrievedDocument } from "./hr-docs.js";
 
 export interface RecruitmentRetrieverOptions {
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
-  mcpUrl?: string;
-  searchLimit?: number;
-  timeoutMs?: number;
+  onMcpEvent?: (event: AgenticMcpAuditEvent) => void;
+}
+
+export interface AgenticMcpAuditEvent {
+  serverId: string;
+  toolName: string;
+  status: "success" | "failure";
+  latencyMs: number;
+  documentCount?: number;
+  warningCode?: string;
 }
 
 export interface RecruitmentRetrievalResult {
   documents: RetrievedDocument[];
   warnings: string[];
-}
-
-interface McpJsonRpcResponse {
-  error?: {
-    message?: string;
-  };
-  result?: {
-    content?: Array<{
-      type?: string;
-      text?: string;
-    }>;
-    structuredContent?: unknown;
-  };
-}
-
-interface McpPostResult {
-  payload?: McpJsonRpcResponse;
-  sessionId?: string;
 }
 
 const recruitmentDocuments: RetrievedDocument[] = [
@@ -48,8 +40,7 @@ const recruitmentDocuments: RetrievedDocument[] = [
   },
 ];
 
-const DEFAULT_AI_RECRUITMENT_MCP_SEARCH_LIMIT = 3;
-const DEFAULT_AI_RECRUITMENT_MCP_TIMEOUT_MS = 4000;
+const AI_RECRUITMENT_MCP_UNAVAILABLE = "AI_RECRUITMENT_MCP_UNAVAILABLE";
 
 export async function retrieveRecruitmentDocuments(
   query: string,
@@ -73,25 +64,40 @@ export async function retrieveRecruitmentContext(
     };
   }
 
+  const startedAt = Date.now();
   try {
     const mcpDocuments = await retrieveAiRecruitmentMcpDocuments(
       query,
       config,
       options,
     );
+    emitMcpAuditEvent(options, {
+      serverId: config.serverId,
+      toolName: config.toolName,
+      status: "success",
+      latencyMs: Date.now() - startedAt,
+      documentCount: mcpDocuments.length,
+    });
 
     return {
       documents: [...mcpDocuments, ...localDocuments],
       warnings: [],
     };
   } catch (error) {
+    emitMcpAuditEvent(
+      options,
+      {
+        serverId: config.serverId,
+        toolName: config.toolName,
+        status: "failure",
+        latencyMs: Date.now() - startedAt,
+        warningCode: AI_RECRUITMENT_MCP_UNAVAILABLE,
+      },
+      sanitizeMcpFailureForLog(error),
+    );
     return {
       documents: localDocuments,
-      warnings: [
-        `AI_RECRUITMENT_MCP_UNAVAILABLE:${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      ],
+      warnings: [AI_RECRUITMENT_MCP_UNAVAILABLE],
     };
   }
 }
@@ -99,219 +105,221 @@ export async function retrieveRecruitmentContext(
 async function retrieveAiRecruitmentMcpDocuments(
   query: string,
   config: {
+    serverId: string;
     token: string;
     url: string;
+    protocolVersion: string;
+    toolName: string;
     searchLimit: number;
     timeoutMs: number;
+    maxContentChars: number;
   },
   options: RecruitmentRetrieverOptions,
 ): Promise<RetrievedDocument[]> {
-  const initialize = await postMcpJson(
-    config.url,
-    config.token,
-    {
-      jsonrpc: "2.0",
-      id: "initialize",
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-03-26",
-        capabilities: {},
-        clientInfo: {
-          name: "agent-toolkit-agentic",
-          version: "0.1.0",
-        },
+  const transport = new StreamableHTTPClientTransport(new URL(config.url), {
+    fetch: options.fetchImpl,
+    requestInit: {
+      headers: {
+        Authorization: `Bearer ${config.token}`,
       },
     },
-    config.timeoutMs,
-    options.fetchImpl,
-  );
-
-  try {
-    await postMcpJson(
-      config.url,
-      config.token,
-      {
-        jsonrpc: "2.0",
-        method: "notifications/initialized",
-      },
-      config.timeoutMs,
-      options.fetchImpl,
-      initialize.sessionId,
-    );
-  } catch {
-    // Some stateless Streamable HTTP servers accept direct tool calls after initialize.
-  }
-
-  const toolResponse = await postMcpJson(
-    config.url,
-    config.token,
+  });
+  transport.setProtocolVersion(config.protocolVersion);
+  const client = new Client(
     {
-      jsonrpc: "2.0",
-      id: "search-user-guide",
-      method: "tools/call",
-      params: {
-        name: "search_user_guide",
+      name: "agent-toolkit-agentic",
+      version: "0.1.0",
+    },
+    { capabilities: {} },
+  );
+  try {
+    await client.connect(transport, { timeout: config.timeoutMs });
+    const toolsResponse = await client.listTools(
+      {},
+      { timeout: config.timeoutMs },
+    );
+    assertMcpToolAvailable(toolsResponse.tools, config.toolName);
+
+    const toolResponse = await client.callTool(
+      {
+        name: config.toolName,
         arguments: {
           query,
           limit: config.searchLimit,
         },
       },
-    },
-    config.timeoutMs,
-    options.fetchImpl,
-    initialize.sessionId,
-  );
-
-  const payload = toolResponse.payload;
-  if (payload?.error) {
-    throw new Error(payload.error.message ?? "MCP tool call failed");
-  }
-
-  return extractMcpTextResults(payload).map((content, index) => ({
-    id: `ai-recruitment-mcp-${index + 1}`,
-    title: "AI Recruitment MCP",
-    content,
-    score: 1,
-  }));
-}
-
-async function postMcpJson(
-  url: string,
-  token: string,
-  body: unknown,
-  timeoutMs: number,
-  fetchImpl: typeof fetch = fetch,
-  sessionId?: string,
-): Promise<McpPostResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const headers: Record<string, string> = {
-      Accept: "application/json, text/event-stream",
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    };
-
-    if (sessionId) {
-      headers["Mcp-Session-Id"] = sessionId;
-    }
-
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(`MCP request failed with HTTP ${response.status}`);
-    }
-
-    return {
-      payload: await readMcpPayload(response),
-      sessionId: response.headers.get("mcp-session-id") ?? sessionId,
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("MCP request timed out");
-    }
-
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function readMcpPayload(
-  response: Response,
-): Promise<McpJsonRpcResponse | undefined> {
-  const text = await response.text();
-  if (!text.trim()) return undefined;
-
-  if (response.headers.get("content-type")?.includes("text/event-stream")) {
-    const payloads = parseSseJsonPayloads(text);
-    return (
-      payloads.find(
-        (payload): payload is McpJsonRpcResponse =>
-          isMcpJsonRpcResponse(payload) &&
-          ("result" in payload || "error" in payload),
-      ) ?? payloads.find(isMcpJsonRpcResponse)
+      undefined,
+      { timeout: config.timeoutMs },
     );
+
+    if ("isError" in toolResponse && toolResponse.isError) {
+      throw new Error("MCP tool call failed");
+    }
+
+    return extractMcpTextResults(
+      normalizeMcpToolResponse(toolResponse),
+      config.maxContentChars,
+    ).map((content, index) => ({
+      id: `ai-recruitment-mcp-${index + 1}`,
+      title: "AI Recruitment MCP",
+      content,
+      score: 1,
+    }));
+  } finally {
+    await transport.terminateSession().catch(() => undefined);
+    await client.close().catch(() => undefined);
   }
-
-  const payload = JSON.parse(text) as unknown;
-  if (!isMcpJsonRpcResponse(payload)) return undefined;
-
-  return payload;
-}
-
-function parseSseJsonPayloads(text: string): unknown[] {
-  return text
-    .split(/\n\n+/)
-    .flatMap((event) =>
-      event
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice("data:".length).trim())
-        .filter((line) => line.length > 0 && line !== "[DONE]"),
-    )
-    .map((line) => JSON.parse(line) as unknown);
 }
 
 function extractMcpTextResults(
-  payload: McpJsonRpcResponse | undefined,
+  payload:
+    | {
+        content?: Array<{
+          type?: string;
+          text?: string;
+        }>;
+        structuredContent?: unknown;
+      }
+    | undefined,
+  maxContentChars: number,
 ): string[] {
-  const contentResults = (payload?.result?.content ?? [])
+  const contentResults = (payload?.content ?? [])
     .filter((item) => item.type === "text")
-    .map((item) => item.text?.trim() ?? "")
+    .map((item) => sanitizeMcpText(item.text ?? "", maxContentChars))
     .filter((content) => content.length > 0);
 
   if (contentResults.length > 0) return contentResults;
 
-  if (payload?.result?.structuredContent) {
-    return [JSON.stringify(payload.result.structuredContent)];
+  if (payload?.structuredContent) {
+    return [
+      sanitizeMcpText(
+        JSON.stringify(payload.structuredContent),
+        maxContentChars,
+      ),
+    ];
   }
 
   return [];
 }
 
-function isMcpJsonRpcResponse(value: unknown): value is McpJsonRpcResponse {
-  return typeof value === "object" && value !== null;
+function normalizeMcpToolResponse(payload: unknown):
+  | {
+      content?: Array<{
+        type?: string;
+        text?: string;
+      }>;
+      structuredContent?: unknown;
+    }
+  | undefined {
+  if (typeof payload !== "object" || payload === null) return undefined;
+
+  if ("content" in payload || "structuredContent" in payload) {
+    return payload as {
+      content?: Array<{
+        type?: string;
+        text?: string;
+      }>;
+      structuredContent?: unknown;
+    };
+  }
+
+  if ("toolResult" in payload) {
+    return { structuredContent: payload.toolResult };
+  }
+
+  return undefined;
+}
+
+function assertMcpToolAvailable(
+  tools:
+    | Array<{
+        name?: string;
+        inputSchema?: unknown;
+      }>
+    | undefined,
+  toolName: string,
+): void {
+  if (!Array.isArray(tools)) {
+    throw new Error("MCP tools/list did not return a tools array");
+  }
+
+  const tool = tools.find((candidate) => candidate.name === toolName);
+  if (!tool) {
+    throw new Error(`MCP tool ${toolName} is not available`);
+  }
+
+  if (
+    tool.inputSchema !== undefined &&
+    (typeof tool.inputSchema !== "object" || tool.inputSchema === null)
+  ) {
+    throw new Error(`MCP tool ${toolName} returned an invalid input schema`);
+  }
+}
+
+function sanitizeMcpText(content: string, maxContentChars: number): string {
+  const normalized = content
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxContentChars);
+
+  if (!normalized) return "";
+
+  return [
+    "[Untrusted MCP retrieved context from ai-recruitment/search_user_guide]",
+    normalized,
+  ].join("\n");
 }
 
 function getAiRecruitmentMcpConfig(options: RecruitmentRetrieverOptions):
   | {
+      serverId: string;
       token: string;
       url: string;
+      protocolVersion: string;
+      toolName: string;
       searchLimit: number;
       timeoutMs: number;
+      maxContentChars: number;
     }
   | undefined {
   const env = options.env ?? process.env;
   const token =
     env["AI_RECRUITMENT_MCP_AUTH_TOKEN"]?.trim() ||
     env["MCP_AUTH_TOKEN"]?.trim();
-  const url = (options.mcpUrl ?? env["AI_RECRUITMENT_MCP_URL"])?.trim();
+  const registry = AGENTIC_MCP_REGISTRY.aiRecruitment;
+  const url =
+    registry.runtimeTargets[registry.defaultRuntimeTarget].endpointUrl.trim();
 
   if (!token || !url) return undefined;
 
   return {
+    serverId: registry.id,
     token,
+    protocolVersion: registry.protocolVersion,
     url,
-    searchLimit: positiveInteger(
-      options.searchLimit ?? env["AI_RECRUITMENT_MCP_SEARCH_LIMIT"],
-      DEFAULT_AI_RECRUITMENT_MCP_SEARCH_LIMIT,
-    ),
-    timeoutMs: positiveInteger(
-      options.timeoutMs ?? env["AI_RECRUITMENT_MCP_TIMEOUT_MS"],
-      DEFAULT_AI_RECRUITMENT_MCP_TIMEOUT_MS,
-    ),
+    toolName: registry.allowedTools.searchUserGuide.name,
+    searchLimit: registry.searchLimit,
+    timeoutMs: registry.timeoutMs,
+    maxContentChars: registry.maxContentChars,
   };
 }
 
-function positiveInteger(value: string | number | undefined, fallback: number) {
-  const parsed =
-    typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+function sanitizeMcpFailureForLog(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/\b(api[_-]?key|token|secret)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .slice(0, 500);
+}
+
+function emitMcpAuditEvent(
+  options: RecruitmentRetrieverOptions,
+  event: AgenticMcpAuditEvent,
+  detail?: string,
+): void {
+  options.onMcpEvent?.(event);
+  const payload = detail ? { ...event, detail } : event;
+  const logger = event.status === "failure" ? console.warn : console.info;
+  logger("[agentic:mcp] ai-recruitment retrieval", payload);
 }

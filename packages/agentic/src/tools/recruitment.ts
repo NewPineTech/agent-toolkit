@@ -29,13 +29,21 @@ export async function answerRecruitmentQuestion(
       warnings: result.warnings,
     };
   } catch (error) {
+    console.warn("[agentic:retriever] recruitment retrieval failed", {
+      warningCode: "RECRUITMENT_RETRIEVER_UNAVAILABLE",
+      detail: sanitizeRecruitmentRetrieverFailure(error),
+    });
     return {
       answer: "Nguon du lieu tuyen dung hien khong san sang.",
-      warnings: [
-        `RECRUITMENT_RETRIEVER_UNAVAILABLE:${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      ],
+      warnings: ["RECRUITMENT_RETRIEVER_UNAVAILABLE"],
     };
   }
+}
+
+function sanitizeRecruitmentRetrieverFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/\b(api[_-]?key|token|secret)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .slice(0, 500);
 }

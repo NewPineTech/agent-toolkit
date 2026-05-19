@@ -19,6 +19,7 @@ describe("agentic package scaffold", () => {
       "@langchain/langgraph-checkpoint": expect.any(String),
       "@langchain/langgraph-cli": expect.any(String),
       "@langchain/langgraph": expect.any(String),
+      "@modelcontextprotocol/sdk": expect.any(String),
       zod: expect.any(String),
     });
   });

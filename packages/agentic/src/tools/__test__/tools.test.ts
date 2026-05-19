@@ -1,9 +1,75 @@
 import { describe, expect, it, vi } from "vitest";
+import { AGENTIC_MCP_REGISTRY } from "../../constants.js";
 import { buildFreeChatContext } from "../free-chat.js";
 import { answerHrKnowledgeQuestion } from "../hr-knowledge.js";
 import { answerRecruitmentQuestion } from "../recruitment.js";
 
 describe("intent tools", () => {
+  function mcpJsonResponse(body: unknown) {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function createMcpFetch(text: string) {
+    return vi.fn(
+      async (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          id?: string | number;
+          method?: string;
+        };
+
+        if (body.method === "initialize") {
+          return mcpJsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              protocolVersion: "2025-03-26",
+              capabilities: { tools: {} },
+              serverInfo: { name: "ai-recruitment", version: "test" },
+            },
+          });
+        }
+
+        if (body.method === "notifications/initialized") {
+          return new Response(null, { status: 202 });
+        }
+
+        if (body.method === "tools/list") {
+          return mcpJsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              tools: [
+                {
+                  name: "search_user_guide",
+                  inputSchema: { type: "object", properties: {} },
+                },
+              ],
+            },
+          });
+        }
+
+        if (body.method === "tools/call") {
+          return mcpJsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              content: [{ type: "text", text }],
+            },
+          });
+        }
+
+        return mcpJsonResponse({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: { code: -32601, message: "Unknown method" },
+        });
+      },
+    );
+  }
+
   it("builds free chat context", async () => {
     await expect(buildFreeChatContext("hello")).resolves.toContain("hello");
   });
@@ -186,59 +252,31 @@ describe("intent tools", () => {
   });
 
   it("answers recruitment questions with ai-recruitment MCP context when configured", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: "initialize",
-            result: { protocolVersion: "2025-03-26", capabilities: {} },
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(new Response(null, { status: 202 }))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: "search-user-guide",
-            result: {
-              content: [
-                {
-                  type: "text",
-                  text: "Recruiters can search candidates by name or email in the guide.",
-                },
-              ],
-            },
-          }),
-          { status: 200 },
-        ),
-      );
+    const fetchImpl = createMcpFetch(
+      "Recruiters can search candidates by name or email in the guide.",
+    );
 
     const result = await answerRecruitmentQuestion("find candidate by email", {
       env: { AI_RECRUITMENT_MCP_AUTH_TOKEN: "mcp-secret" },
       fetchImpl,
-      mcpUrl: "http://mcp.test/api/v1/mcp",
     });
 
     expect(result.answer).toContain(
       "Recruiters can search candidates by name or email",
     );
     expect(result.warnings).toEqual([]);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      AGENTIC_MCP_REGISTRY.aiRecruitment.runtimeTargets.local.endpointUrl,
+    );
   });
 
   it("keeps recruitment answers alive when ai-recruitment MCP fails", async () => {
     const result = await answerRecruitmentQuestion("candidate interview", {
       env: { AI_RECRUITMENT_MCP_AUTH_TOKEN: "mcp-secret" },
       fetchImpl: vi.fn().mockRejectedValue(new Error("network down")),
-      mcpUrl: "http://mcp.test/api/v1/mcp",
     });
 
     expect(result.answer).toContain("Candidate Screening");
-    expect(result.warnings).toEqual([
-      "AI_RECRUITMENT_MCP_UNAVAILABLE:network down",
-    ]);
+    expect(result.warnings).toEqual(["AI_RECRUITMENT_MCP_UNAVAILABLE"]);
   });
 });

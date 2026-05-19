@@ -28,6 +28,11 @@
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.2"
+    }
+  },
   "devDependencies": {
     "@agent-toolkit/cli": "workspace:*",
     "prettier": "^3.8.3"

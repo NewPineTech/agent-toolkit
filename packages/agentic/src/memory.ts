@@ -87,7 +87,9 @@ export function buildMemoryContext(
     .join("\n\n");
 }
 
-export function buildCurrentExchangeMessages(state: AgenticState): AgenticMessage[] {
+export function buildCurrentExchangeMessages(
+  state: AgenticState,
+): AgenticMessage[] {
   const currentExchange: AgenticMessage[] = [
     { role: "user" as const, content: state.message.trim() },
   ];
@@ -102,15 +104,22 @@ export function buildCurrentExchangeMessages(state: AgenticState): AgenticMessag
   return currentExchange;
 }
 
-export function buildFinalExchangeMessages(state: AgenticState): AgenticMessage[] {
+export function buildFinalExchangeMessages(
+  state: AgenticState,
+): AgenticMessage[] {
   return [
     ...trimConversationMessages(state.messages),
     ...buildCurrentExchangeMessages(state),
   ];
 }
 
-export function buildSummaryBufferMessages(state: AgenticState): AgenticMessage[] {
-  return [...state.summaryBufferMessages, ...buildCurrentExchangeMessages(state)];
+export function buildSummaryBufferMessages(
+  state: AgenticState,
+): AgenticMessage[] {
+  return [
+    ...state.summaryBufferMessages,
+    ...buildCurrentExchangeMessages(state),
+  ];
 }
 
 export function appendFinalExchange(state: AgenticState): AgenticMessage[] {

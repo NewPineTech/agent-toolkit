@@ -1,13 +1,80 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGENTIC_INTENTS } from "../../constants.js";
+import { AGENTIC_INTENTS, AGENTIC_MCP_REGISTRY } from "../../constants.js";
 import * as modelModule from "../../model.js";
 import { freeChatGraph } from "../free-chat.js";
 import { hrKnowledgeQaGraph } from "../hr-knowledge-qa.js";
 import { hrRecruitmentGraph } from "../hr-recruitment.js";
 
 describe("intent subgraphs", () => {
+  function mcpJsonResponse(body: unknown) {
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function createMcpFetch(text: string) {
+    return vi.fn(
+      async (_url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          id?: string | number;
+          method?: string;
+        };
+
+        if (body.method === "initialize") {
+          return mcpJsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              protocolVersion: "2025-03-26",
+              capabilities: { tools: {} },
+              serverInfo: { name: "ai-recruitment", version: "test" },
+            },
+          });
+        }
+
+        if (body.method === "notifications/initialized") {
+          return new Response(null, { status: 202 });
+        }
+
+        if (body.method === "tools/list") {
+          return mcpJsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              tools: [
+                {
+                  name: "search_user_guide",
+                  inputSchema: { type: "object", properties: {} },
+                },
+              ],
+            },
+          });
+        }
+
+        if (body.method === "tools/call") {
+          return mcpJsonResponse({
+            jsonrpc: "2.0",
+            id: body.id,
+            result: {
+              content: [{ type: "text", text }],
+            },
+          });
+        }
+
+        return mcpJsonResponse({
+          jsonrpc: "2.0",
+          id: body.id,
+          error: { code: -32601, message: "Unknown method" },
+        });
+      },
+    );
+  }
+
   afterEach(() => {
+    delete process.env.AI_RECRUITMENT_MCP_AUTH_TOKEN;
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("runs free chat subgraph", async () => {
@@ -161,6 +228,40 @@ describe("intent subgraphs", () => {
       expect.objectContaining({
         prompt: expect.stringContaining(
           "Recent conversation:\nuser: Find candidate screening guidance.\nassistant: Use the screening checklist.",
+        ),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("passes sanitized MCP retrieval context through the HR recruitment graph boundary", async () => {
+    process.env.AI_RECRUITMENT_MCP_AUTH_TOKEN = "mcp-secret";
+    const fetchImpl = createMcpFetch(
+      "Candidates can be searched by name or email.",
+    );
+    vi.stubGlobal("fetch", fetchImpl);
+    const generateModelResponse = vi
+      .spyOn(modelModule, "generateModelResponse")
+      .mockResolvedValue({ content: "ok", warnings: [] });
+
+    await hrRecruitmentGraph.invoke({
+      message: "find candidate by email",
+      standaloneQuery: "find candidate by email",
+    });
+
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
+      AGENTIC_MCP_REGISTRY.aiRecruitment.runtimeTargets.local.endpointUrl,
+    );
+    expect(generateModelResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("Untrusted MCP retrieved context"),
+      }),
+      expect.anything(),
+    );
+    expect(generateModelResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining(
+          "Candidates can be searched by name or email.",
         ),
       }),
       expect.anything(),

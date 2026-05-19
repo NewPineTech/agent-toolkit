@@ -84,6 +84,9 @@ The installer links the CLI as `agent-toolkit ...` and `atk ...`. From a manual 
 ### 2. Start infrastructure
 
 ```bash
+cp .env.prod.example .env.prod
+# For local Docker-only Postgres, set POSTGRES_PASSWORD=dev_password
+# or update DATABASE_URL in .env to match your .env.prod password.
 docker compose up -d postgres redis
 ```
 
@@ -105,31 +108,37 @@ Required variables:
 
 Optional variables (with defaults):
 
-| Variable              | Default       | Description                                   |
-| --------------------- | ------------- | --------------------------------------------- |
-| `PORT`                | `3000`        | Server port                                   |
-| `HOST`                | `0.0.0.0`     | Bind address                                  |
-| `LOG_LEVEL`           | `info`        | `fatal` `error` `warn` `info` `debug` `trace` |
-| `SESSION_TTL_MINUTES` | `30`          | Widget session lifetime                       |
-| `CORS_MAX_AGE`        | `86400`       | CORS preflight cache (seconds)                |
-| `SHUTDOWN_TIMEOUT_MS` | `30000`       | Graceful shutdown timeout                     |
-| `NODE_ENV`            | `development` | `development` `production` `test`             |
+| Variable                        | Default         | Description                                      |
+| ------------------------------- | --------------- | ------------------------------------------------ |
+| `PORT`                          | `3000`          | Server port                                      |
+| `HOST`                          | `0.0.0.0`       | Bind address                                     |
+| `LOG_LEVEL`                     | `info`          | `fatal` `error` `warn` `info` `debug` `trace`    |
+| `SESSION_TTL_MINUTES`           | `30`            | Widget session lifetime                          |
+| `CORS_MAX_AGE`                  | `86400`         | CORS preflight cache (seconds)                   |
+| `SHUTDOWN_TIMEOUT_MS`           | `30000`         | Graceful shutdown timeout                        |
+| `NODE_ENV`                      | `development`   | `development` `production` `test`                |
+| `WIDGET_API_URL`                | —               | Widget build-time backend URL                    |
+| `WIDGET_STANDALONE_BUNDLE_PATH` | packaged bundle | Optional server override for `/widget/widget.js` |
 
 Agentic LangGraph variables:
 
-| Variable                        | Default   | Description                                                             |
-| ------------------------------- | --------- | ----------------------------------------------------------------------- |
-| `GEMINI_VERTEX_API_KEY`         | _(empty)_ | Secret for the HR assistant model wrapper; empty uses fallback behavior |
-| `LANGGRAPH_PORT`                | `2024`    | Docker host port for the Agentic `/chat` runtime                        |
-| `LANGSTUDIO_PORT`               | `2025`    | Docker host port for the LangGraph Studio dev API                       |
-| `AI_RECRUITMENT_MCP_AUTH_TOKEN` | _(empty)_ | Optional bearer token for the HR recruitment MCP tool context           |
-| `AI_RECRUITMENT_MCP_URL`        | _(empty)_ | Optional Streamable HTTP MCP endpoint for the `hr_recruitment` subgraph |
+| Variable                        | Default   | Description                                                                   |
+| ------------------------------- | --------- | ----------------------------------------------------------------------------- |
+| `GEMINI_VERTEX_API_KEY`         | _(empty)_ | Secret for the HR assistant model wrapper; empty uses fallback behavior       |
+| `RAGFLOW_API_KEY`               | _(empty)_ | Optional HR document retriever key used by the Agentic `hr_knowledge_qa` flow |
+| `LANGGRAPH_PORT`                | `2024`    | Docker host port for the Agentic `/chat` runtime                              |
+| `LANGSTUDIO_PORT`               | `2025`    | Docker host port for the LangGraph Studio dev API                             |
+| `AI_RECRUITMENT_MCP_AUTH_TOKEN` | _(empty)_ | Optional bearer token for the HR recruitment MCP tool context                 |
 
 ### 4. Run the server
 
 ```bash
 pnpm dev
 ```
+
+`pnpm dev` starts the Fastify server, the Agentic `/chat` runtime, and the
+LangGraph Studio dev API together. Use `pnpm dev:server`,
+`pnpm dev:langgraph`, or `pnpm dev:langstudio` when you only need one process.
 
 ### 5. Embed the widget
 
@@ -264,6 +273,9 @@ agent-toolkit/
 │   │   └── drizzle/                 # SQL migration files
 │   ├── agentic/                     # @agent-toolkit/agentic LangGraph HR assistant runtime
 │   │   ├── src/graph.ts             # Parent router graph with short-term memory
+│   │   ├── src/http/                # Minimal provider-compatible /chat SSE API
+│   │   ├── src/retrievers/          # HR docs and recruitment context retrieval
+│   │   ├── src/tools/               # Intent tool wrappers with graceful fallbacks
 │   │   ├── src/workflows/           # Intent subgraphs exposed to LangGraph Studio
 │   │   ├── src/prompts/             # Markdown prompt assets copied into dist
 │   │   └── langgraph.json           # Local Studio graph exports
@@ -313,6 +325,38 @@ workspaces table
 ### Shared Core + Adapter Pattern
 
 Runtime-independent rules live in `@agent-toolkit/core` and are reused by the server, CLI, and widget package. This keeps domain allowlist validation, AES-GCM encryption, provider URL construction, workspace option parsing, widget embed URL generation, and iframe/snippet templates consistent across entrypoints.
+
+### Agentic HR Runtime
+
+`@agent-toolkit/agentic` exposes a first-party LangGraph-backed provider
+runtime for HR assistants. The parent graph rewrites short follow-up questions,
+routes the standalone query to the smallest intent set, runs intent subgraphs,
+then synthesizes one final answer while preserving the widget SSE contract.
+
+Current intent subgraphs are:
+
+| Intent            | Purpose                                                                        |
+| ----------------- | ------------------------------------------------------------------------------ |
+| `free_chat`       | Greetings, assistant/user identity questions, and light conversation           |
+| `hr_knowledge_qa` | Grounded HR policy, form, document, and process answers from retrieved context |
+| `hr_recruitment`  | Recruiting workflow questions with optional `ai-recruitment` MCP context       |
+
+The recruitment MCP integration is a deterministic retrieval-context path, not
+a model-driven action loop. The runtime initializes the Streamable HTTP MCP
+session through the official MCP TypeScript SDK, verifies the required
+`search_user_guide` tool through `tools/list`, marks returned content as
+untrusted retrieved context, and falls back to local recruitment notes when the
+MCP is unavailable. Non-secret MCP settings such as endpoint URL, protocol
+version, search limit, timeout, allowed read-only guide tools, and output size
+live in `AGENTIC_MCP_REGISTRY` in `packages/agentic/src/constants.ts`. The
+registry also defines source-owned local and Docker runtime targets and the
+default target. `.env` keeps only the bearer token.
+
+Prompt behavior lives in Markdown files under `packages/agentic/src/prompts/`
+and is copied into `dist` during the package build. Keep prompt boundary changes
+covered by `prompt-loader`, router, or workflow tests. For example, user identity
+questions such as `tôi là ai` must be answered as questions about the user, not
+as assistant self-introductions.
 
 ### Adapter + Factory Pattern
 
@@ -513,10 +557,14 @@ Returns `200` if PostgreSQL and Redis are reachable, `503` otherwise. Includes p
 ## Development
 
 ```bash
-pnpm dev          # Start server with hot reload
-pnpm build        # Build all packages
-pnpm typecheck    # Type-check all packages
-pnpm test         # Run all tests
+pnpm dev             # Start server + Agentic runtime + LangGraph Studio
+pnpm dev:server      # Start only the Fastify server with hot reload
+pnpm dev:langgraph   # Start only the Agentic /chat runtime on port 2024
+pnpm dev:langstudio  # Start only the LangGraph Studio dev API on port 2025
+pnpm dev:widget      # Watch-build the widget package
+pnpm build           # Build all packages
+pnpm typecheck       # Type-check all packages
+pnpm test            # Run all tests
 ```
 
 ### Running with Docker
@@ -525,7 +573,10 @@ pnpm test         # Run all tests
 docker compose up --build
 ```
 
-This starts PostgreSQL, Redis, and the server. The server waits for both databases to be healthy before starting.
+This uses `.env.prod` and starts PostgreSQL, Redis, the server, the Agentic
+runtime, and the LangGraph Studio dev API. The server waits for PostgreSQL,
+Redis, and the Agentic runtime health check before starting. For the production
+compose file and Storybook service, use `./scripts/deploy.sh up`.
 
 ### Production Deployment
 
@@ -545,10 +596,10 @@ The server uses [Drizzle ORM](https://orm.drizzle.team/) for schema management. 
 
 ```bash
 # Generate a new migration after editing packages/server/src/db/schema.ts
-cd packages/server && npx drizzle-kit generate
+pnpm db:generate
 
 # Apply pending migrations
-cd packages/server && npx drizzle-kit migrate
+pnpm db:migrate
 ```
 
 ### Workspace CLI
@@ -663,21 +714,27 @@ cd packages/widget && pnpm storybook
 Vitest is the primary test runner across packages.
 
 ```bash
-# Unit tests only (adapters + factories)
+# Full workspace suite
+pnpm test
+
+# Server adapters, factories, routes, storage, auth, and rate limiting
 pnpm --filter @agent-toolkit/server run test
 
-# With coverage report
-cd packages/server && npx vitest run --coverage
+# Agentic graph, prompts, retrievers, model wrapper, and provider HTTP API
+pnpm --filter @agent-toolkit/agentic run test
+
+# Widget component, hook, and embed-loader unit tests
+pnpm --filter @agent-toolkit/widget run test
+
+# Storybook interaction/accessibility tests
+pnpm --filter @agent-toolkit/widget run test:storybook
 ```
 
-| Area                 | Files | Tests | Coverage |
-| -------------------- | ----- | ----- | -------- |
-| Security adapters    | 3     | 26    | 100%     |
-| Infra adapters       | 5     | 28    | 100%     |
-| Storage adapters     | 4     | 19    | 100%     |
-| Chat adapter         | 1     | 10    | 90%      |
-| Factories            | 5     | 29    | 97%      |
-| Integration (routes) | 1     | 12    | —        |
+Use package-local checks while iterating, then run broader `pnpm test`,
+`pnpm typecheck`, and `pnpm build` before shipping cross-package changes.
+Prompt changes in `packages/agentic` should include tests that assert the prompt
+asset, router behavior, or workflow model request that protects the changed
+boundary.
 
 ## Knowledge Base Ingest Pipeline
 

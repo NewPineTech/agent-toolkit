@@ -6,22 +6,19 @@ workspace auth, rate limits, encrypted provider keys, and SSE proxying.
 
 ## Local Development
 
-Run the Agent Toolkit server as usual:
+Run the full local stack when you want the server, Agentic runtime, and Studio
+API together:
 
 ```bash
 pnpm dev
 ```
 
-Run the Agentic HTTP runtime for server-to-provider calls:
+Run individual processes when you only need one role:
 
 ```bash
-PORT=2024 pnpm --filter @agent-toolkit/agentic exec tsx src/server.ts
-```
-
-Run LangGraph Studio against the graph exports:
-
-```bash
-pnpm --filter @agent-toolkit/agentic run dev
+pnpm dev:server      # Fastify widget/session/SSE proxy
+pnpm dev:langgraph   # Agentic HTTP /chat runtime on port 2024
+pnpm dev:langstudio  # LangGraph Studio dev API on port 2025
 ```
 
 The Studio command starts a LangGraph dev API and prints a Studio URL. The
@@ -40,6 +37,9 @@ The compose files expose two Agentic services:
 | ------------ | ------------------------------------------------ | -------------------------- |
 | `langgraph`  | Server-facing Agentic `/chat` provider runtime   | `${LANGGRAPH_PORT:-2024}`  |
 | `langstudio` | LangGraph Studio dev API for graph visualization | `${LANGSTUDIO_PORT:-2025}` |
+
+Both compose files expect `.env.prod` for container secrets and port settings.
+Copy `.env.prod.example` to `.env.prod` before running Docker commands.
 
 Start only the Agentic runtime:
 
@@ -101,23 +101,48 @@ forwards the existing widget SSE contract (`token`, `metadata`, `error`,
 wrapper degrades to deterministic fallback behavior so local tests and Docker
 smoke checks still run.
 
+`RAGFLOW_API_KEY` enables the HR document retriever used by
+`hr_knowledge_qa`. If it is empty or the retriever is unavailable, the graph
+keeps the chat flow alive and emits warnings such as `HR_RETRIEVER_EMPTY` or
+`HR_RETRIEVER_UNAVAILABLE:*` instead of crashing.
+
 The `hr_recruitment` subgraph can also call the optional `ai-recruitment` MCP
 server for recruitment user-guide context before falling back to local
 recruitment notes:
 
-| Variable                          | Purpose                                                                                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AI_RECRUITMENT_MCP_AUTH_TOKEN`   | Bearer token for the MCP server. If empty, `MCP_AUTH_TOKEN` is used as a fallback.                                                                            |
-| `AI_RECRUITMENT_MCP_URL`          | Streamable HTTP MCP endpoint, for example `http://localhost:3000/api/v1/mcp` from host or `http://host.docker.internal:3000/api/v1/mcp` from Docker on macOS. |
-| `AI_RECRUITMENT_MCP_SEARCH_LIMIT` | Optional search result limit. Defaults to `3`.                                                                                                                |
-| `AI_RECRUITMENT_MCP_TIMEOUT_MS`   | Optional MCP request timeout. Defaults to `4000`.                                                                                                             |
+| Variable                        | Purpose                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| `AI_RECRUITMENT_MCP_AUTH_TOKEN` | Bearer token for the MCP server. If empty, `MCP_AUTH_TOKEN` is used as a fallback. |
 
 Codex global MCP config is a developer convenience; it is not automatically
-available inside the Agentic runtime or Docker containers. Mirror the same URL
-and token into the runtime environment when the graph should call that MCP.
+available inside the Agentic runtime or Docker containers. Mirror the bearer
+token into the runtime environment when the graph should call that MCP.
+
+Non-secret MCP configuration lives in `AGENTIC_MCP_REGISTRY` in
+`packages/agentic/src/constants.ts`. That registry owns the local and Docker
+runtime endpoint targets, the default runtime target, protocol version, timeout,
+search limit, maximum content length, allowed read-only guide tools, and usage
+mode. Do not add URL, timeout, or result-limit overrides to `.env`; changing
+those values is a source-controlled domain configuration change.
+
+The current MCP usage mode is `retrieval_context`. The graph performs a
+deterministic read-only lookup before model generation: initialize the
+Streamable HTTP MCP session through the official MCP TypeScript SDK, verify the
+required `search_user_guide` retrieval tool through `tools/list`, call that
+tool, mark returned content as untrusted retrieved context, emit sanitized audit
+metadata, and fall back to local recruitment notes on failure. The registry also
+allowlists the other read-only guide tools (`list_user_guide_pages`,
+`get_user_guide_page`, and `get_user_guide_section`) for future deterministic
+guide lookups. A LangGraph tool-loop mode should be introduced only when the
+model needs to choose among multiple MCP tools or perform action-like
+operations; that should use a graph node/tool loop with explicit allowlists,
+audit logging, and approval boundaries.
 
 Non-secret graph topology, prompt files, retriever defaults, and memory defaults
-live in source under `packages/agentic`.
+live in source under `packages/agentic`. Prompt assets are Markdown files under
+`packages/agentic/src/prompts/` and are copied into `dist` during
+`pnpm --filter @agent-toolkit/agentic run build`; prompt behavior should be
+covered by prompt-loader, router, or workflow tests.
 
 ## Verification
 

@@ -138,9 +138,9 @@ describe("short memory", () => {
   });
 
   it("re-summarizes from the old summary and six latest messages", async () => {
-    const invoke = vi
-      .fn()
-      .mockResolvedValue({ content: "Updated summary from latest six messages." });
+    const invoke = vi.fn().mockResolvedValue({
+      content: "Updated summary from latest six messages.",
+    });
 
     const saved = await buildSavedMemoryState(
       {
@@ -163,7 +163,9 @@ describe("short memory", () => {
       { model: { invoke } },
     );
 
-    expect(saved.memorySummary).toBe("Updated summary from latest six messages.");
+    expect(saved.memorySummary).toBe(
+      "Updated summary from latest six messages.",
+    );
     expect(saved.messagesSinceSummary).toBe(0);
     expect(saved.summaryBufferMessages).toEqual([]);
     const humanMessage = invoke.mock.calls[0]?.[0]?.[1];
