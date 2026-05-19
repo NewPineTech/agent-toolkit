@@ -28,6 +28,72 @@ describe("agentic state contract", () => {
       message: AgenticStudioDefaultInput,
     });
   });
+
+  it("creates a sanitized empty evidence contract for workflow results", async () => {
+    const { createEmptyAgenticEvidence } =
+      (await import("../state.js")) as typeof import("../state.js");
+
+    expect(createEmptyAgenticEvidence()).toEqual({
+      retrievedDocuments: [],
+      sources: [],
+      toolCalls: [],
+      missingEvidence: [],
+      confidenceSignals: [],
+    });
+  });
+
+  it("maps retrieved documents into practical evidence without raw payload fields", async () => {
+    const { createAgenticEvidenceFromDocuments } =
+      (await import("../state.js")) as typeof import("../state.js");
+
+    const evidence = createAgenticEvidenceFromDocuments(
+      [
+        {
+          id: "chunk-1",
+          documentId: "doc-1",
+          title: "Leave Policy",
+          content: "Employees can request annual leave through the HR system.",
+          originFileUrl: "https://docs.test/leave-policy.pdf",
+          score: 0.82,
+        },
+      ],
+      {
+        toolName: "hr_knowledge_retriever",
+        capabilityId: "hr_knowledge.retrieve_documents",
+      },
+    );
+
+    expect(evidence.retrievedDocuments).toEqual([
+      expect.objectContaining({
+        id: "chunk-1",
+        title: "Leave Policy",
+        excerpt: "Employees can request annual leave through the HR system.",
+        sourceUrl: "https://docs.test/leave-policy.pdf",
+        score: 0.82,
+      }),
+    ]);
+    expect(evidence.sources).toEqual([
+      expect.objectContaining({
+        id: "chunk-1",
+        kind: "document",
+        name: "Leave Policy",
+        url: "https://docs.test/leave-policy.pdf",
+      }),
+    ]);
+    expect(evidence.toolCalls).toEqual([
+      expect.objectContaining({
+        toolName: "hr_knowledge_retriever",
+        capabilityId: "hr_knowledge.retrieve_documents",
+        status: "executed",
+        documentCount: 1,
+      }),
+    ]);
+    expect(evidence.missingEvidence).toEqual([]);
+    expect(evidence.confidenceSignals[0]).toMatchObject({
+      label: "retrieved_documents_available",
+      direction: "supports",
+    });
+  });
 });
 
 describe("agentic constants", () => {

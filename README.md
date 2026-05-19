@@ -341,16 +341,19 @@ Current intent subgraphs are:
 | `hr_knowledge_qa` | Grounded HR policy, form, document, and process answers from retrieved context |
 | `hr_recruitment`  | Recruiting workflow questions with optional `ai-recruitment` MCP context       |
 
-The recruitment MCP integration is a deterministic retrieval-context path, not
-a model-driven action loop. The runtime initializes the Streamable HTTP MCP
-session through the official MCP TypeScript SDK, verifies the required
-`search_user_guide` tool through `tools/list`, marks returned content as
-untrusted retrieved context, and falls back to local recruitment notes when the
-MCP is unavailable. Non-secret MCP settings such as endpoint URL, protocol
-version, search limit, timeout, allowed read-only guide tools, and output size
-live in `AGENTIC_MCP_REGISTRY` in `packages/agentic/src/constants.ts`. The
-registry also defines source-owned local and Docker runtime targets and the
-default target. `.env` keeps only the bearer token.
+The recruitment MCP integration uses a hybrid plan-and-gate pattern. The
+current runtime creates a code-owned read-only search plan, validates it against
+the MCP registry, initializes the Streamable HTTP MCP session through the
+official MCP TypeScript SDK, verifies the required tool through `tools/list`,
+marks returned content as untrusted retrieved context, and falls back to local
+recruitment notes when the MCP is unavailable. Future model-proposed MCP plans
+must pass the same policy gate: read-only tools can execute automatically, while
+write/action tools require explicit approval before execution. Non-secret MCP
+settings such as endpoint URL, protocol version, search limit, timeout,
+capability/approval metadata, allowed tools, and output size live in
+`AGENTIC_MCP_REGISTRY` in `packages/agentic/src/constants.ts`. The registry also
+defines source-owned local and Docker runtime targets and the default target.
+`.env` keeps only the bearer token.
 
 Prompt behavior lives in Markdown files under `packages/agentic/src/prompts/`
 and is copied into `dist` during the package build. Keep prompt boundary changes

@@ -1,7 +1,11 @@
 import { END, START, StateGraph } from "@langchain/langgraph";
 import { AGENTIC_INTENTS } from "../constants.js";
 import { loadPrompt } from "../prompt-loader.js";
-import { AgenticStateAnnotation, type AgenticState } from "../state.js";
+import {
+  AgenticStateAnnotation,
+  createAgenticEvidenceFromDocuments,
+  type AgenticState,
+} from "../state.js";
 import { answerRecruitmentQuestion } from "../tools/recruitment.js";
 import { generateModelResponse } from "../model.js";
 import { buildMemoryContext } from "../memory.js";
@@ -45,6 +49,13 @@ async function hrRecruitmentNode(state: AgenticState) {
         intent: AGENTIC_INTENTS.hrRecruitment,
         answer: response.content,
         warnings,
+        evidence: createAgenticEvidenceFromDocuments(result.documents, {
+          toolName: "hr_recruitment_retriever",
+          capabilityId: "hr_recruitment.retrieve_context",
+          warningCodes: result.warnings,
+          missingEvidenceReason:
+            "No recruitment documents were retrieved for this question.",
+        }),
       },
     ],
     warnings,

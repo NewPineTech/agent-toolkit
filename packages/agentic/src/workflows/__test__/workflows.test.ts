@@ -6,6 +6,14 @@ import { hrKnowledgeQaGraph } from "../hr-knowledge-qa.js";
 import { hrRecruitmentGraph } from "../hr-recruitment.js";
 
 describe("intent subgraphs", () => {
+  const emptyEvidence = {
+    retrievedDocuments: [],
+    sources: [],
+    toolCalls: [],
+    missingEvidence: [],
+    confidenceSignals: [],
+  };
+
   function mcpJsonResponse(body: unknown) {
     return new Response(JSON.stringify(body), {
       status: 200,
@@ -73,6 +81,7 @@ describe("intent subgraphs", () => {
 
   afterEach(() => {
     delete process.env.AI_RECRUITMENT_MCP_AUTH_TOKEN;
+    delete process.env.RAGFLOW_API_KEY;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -84,6 +93,7 @@ describe("intent subgraphs", () => {
     });
 
     expect(result.workflowResults[0]?.intent).toBe(AGENTIC_INTENTS.freeChat);
+    expect(result.workflowResults[0]?.evidence).toEqual(emptyEvidence);
   });
 
   it("passes memory context to free chat prompt", async () => {
@@ -153,6 +163,146 @@ describe("intent subgraphs", () => {
     );
     expect(result.workflowResults[0]?.answer).toContain("Retrieved context");
     expect(result.workflowResults[0]?.answer).toContain("Leave Policy");
+    expect(result.workflowResults[0]?.evidence).toMatchObject({
+      retrievedDocuments: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Leave Policy",
+        }),
+      ]),
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          name: "Leave Policy",
+        }),
+      ]),
+      toolCalls: expect.arrayContaining([
+        expect.objectContaining({
+          toolName: "hr_knowledge_retriever",
+          status: "executed",
+          documentCount: 2,
+        }),
+        expect.objectContaining({
+          capabilityId: "hr_knowledge.retrieve_process",
+          status: "executed",
+        }),
+        expect.objectContaining({
+          capabilityId: "hr_knowledge.retrieve_forms",
+          status: "executed",
+        }),
+      ]),
+      missingEvidence: [],
+    });
+  });
+
+  it("uses the HR knowledge prompt for no-evidence answers instead of hardcoded text", async () => {
+    process.env.RAGFLOW_API_KEY = "ragflow-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 0, data: { chunks: [] } }), {
+          status: 200,
+        }),
+      ),
+    );
+    const generateModelResponse = vi
+      .spyOn(modelModule, "generateModelResponse")
+      .mockResolvedValue({
+        content: "model-generated no evidence answer",
+        warnings: [],
+      });
+
+    const result = await hrKnowledgeQaGraph.invoke({
+      message: "Quy trình không tồn tại gồm các bước nào?",
+      standaloneQuery: "Quy trình không tồn tại gồm các bước nào?",
+    });
+
+    expect(generateModelResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("Retriever warnings:"),
+      }),
+      expect.anything(),
+    );
+    expect(result.workflowResults[0]?.answer).toBe(
+      "model-generated no evidence answer",
+    );
+    expect(result.workflowResults[0]?.warnings).toContain(
+      "HR_KNOWLEDGE_EVIDENCE_EMPTY",
+    );
+    expect(result.workflowResults[0]?.evidence.missingEvidence).toEqual([
+      expect.objectContaining({
+        severity: "blocking",
+      }),
+    ]);
+  });
+
+  it("uses the HR knowledge prompt for incomplete process evidence instead of hardcoded text", async () => {
+    process.env.RAGFLOW_API_KEY = "ragflow-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              code: 0,
+              data: {
+                chunks: [
+                  {
+                    id: "process-partial",
+                    document_keyword: "QT tuyen dung",
+                    content_with_weight:
+                      "Tổng số bước: 7. Bước 1: Đề xuất tuyển dụng. Bước 2: Phê duyệt nhu cầu.",
+                    similarity: 0.86,
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              code: 0,
+              data: {
+                chunks: [
+                  {
+                    id: "process-partial-again",
+                    document_keyword: "QT tuyen dung",
+                    content_with_weight:
+                      "Tổng số bước: 7. Bước 1: Đề xuất tuyển dụng. Bước 2: Phê duyệt nhu cầu.",
+                    similarity: 0.86,
+                  },
+                ],
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+    );
+    const generateModelResponse = vi
+      .spyOn(modelModule, "generateModelResponse")
+      .mockResolvedValue({
+        content: "model-generated incomplete process answer",
+        warnings: [],
+      });
+
+    const result = await hrKnowledgeQaGraph.invoke({
+      message: "Quy trình tuyển dụng gồm các bước nào?",
+      standaloneQuery: "Quy trình tuyển dụng gồm các bước nào?",
+    });
+
+    expect(generateModelResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("HR_KNOWLEDGE_PROCESS_INCOMPLETE"),
+      }),
+      expect.anything(),
+    );
+    expect(result.workflowResults[0]?.warnings).toContain(
+      "HR_KNOWLEDGE_PROCESS_INCOMPLETE",
+    );
+    expect(result.workflowResults[0]?.answer).toBe(
+      "model-generated incomplete process answer",
+    );
   });
 
   it("passes memory context to HR knowledge QA prompt", async () => {
@@ -199,6 +349,26 @@ describe("intent subgraphs", () => {
     );
     expect(result.workflowResults[0]?.answer).toContain("Recruitment context");
     expect(result.workflowResults[0]?.answer).toContain("Candidate Screening");
+    expect(result.workflowResults[0]?.evidence).toMatchObject({
+      retrievedDocuments: expect.arrayContaining([
+        expect.objectContaining({
+          title: "Candidate Screening",
+        }),
+      ]),
+      sources: expect.arrayContaining([
+        expect.objectContaining({
+          name: "Candidate Screening",
+        }),
+      ]),
+      toolCalls: [
+        expect.objectContaining({
+          toolName: "hr_recruitment_retriever",
+          status: "executed",
+          documentCount: 2,
+        }),
+      ],
+      missingEvidence: [],
+    });
   });
 
   it("passes memory context to HR recruitment prompt", async () => {

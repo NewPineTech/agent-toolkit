@@ -116,8 +116,15 @@ async function multiIntentNode(state: AgenticState) {
 async function synthesizeFinalAnswerNode(state: AgenticState) {
   const prompt = await loadPrompt("synthesize-final-answer");
   if (state.workflowResults.length === 0) {
+    if (!isAgenticModelConfigured()) return { finalAnswer: "" };
+  }
+
+  if (state.workflowResults.some(hasBlockingEvidence)) {
     return {
-      finalAnswer: "Em chua co ket qua phu hop de tra loi cau hoi nay.",
+      finalAnswer: state.workflowResults
+        .map((result) => result.answer)
+        .filter(Boolean)
+        .join("\n\n"),
     };
   }
 
@@ -167,6 +174,14 @@ async function saveShortMemoryNode(state: AgenticState) {
 
 function uniqueWarnings(warnings: string[]): string[] {
   return [...new Set(warnings)];
+}
+
+function hasBlockingEvidence(
+  result: AgenticState["workflowResults"][number],
+): boolean {
+  return result.evidence.missingEvidence.some(
+    (missingEvidence) => missingEvidence.severity === "blocking",
+  );
 }
 
 const builder = new StateGraph(AgenticStateAnnotation, {

@@ -1,9 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { AGENTIC_MCP_REGISTRY } from "../../constants.js";
 import { retrieveHrForms, retrieveHrProcess } from "../hr-docs.js";
 import {
+  authorizeAiRecruitmentMcpAction,
+  createAiRecruitmentMcpApprovalRequest,
+  createAiRecruitmentGuideSearchPlan,
+  executeAiRecruitmentMcpAction,
+  resolveAiRecruitmentMcpApprovalDecision,
   retrieveRecruitmentContext,
   retrieveRecruitmentDocuments,
+  type AiRecruitmentMcpActionPlan,
+  type AiRecruitmentMcpToolDefinition,
 } from "../recruitment.js";
 
 describe("HR retrievers", () => {
@@ -209,15 +217,378 @@ describe("HR retrievers", () => {
     ).toEqual([
       expect.objectContaining({
         name: "list_user_guide_pages",
+        capability: "read",
+        approvalPolicy: "never",
         readOnly: true,
       }),
-      expect.objectContaining({ name: "get_user_guide_page", readOnly: true }),
-      expect.objectContaining({ name: "search_user_guide", readOnly: true }),
+      expect.objectContaining({
+        name: "get_user_guide_page",
+        capability: "read",
+        approvalPolicy: "never",
+        readOnly: true,
+      }),
+      expect.objectContaining({
+        name: "search_user_guide",
+        capability: "read",
+        approvalPolicy: "never",
+        readOnly: true,
+      }),
       expect.objectContaining({
         name: "get_user_guide_section",
+        capability: "read",
+        approvalPolicy: "never",
         readOnly: true,
       }),
     ]);
+  });
+
+  it("plans guide search as a read-only MCP action that code can authorize", () => {
+    const plan = createAiRecruitmentGuideSearchPlan("find candidate by email");
+    const authorization = authorizeAiRecruitmentMcpAction(
+      plan,
+      AGENTIC_MCP_REGISTRY.aiRecruitment.allowedTools.searchUserGuide,
+    );
+
+    expect(plan).toEqual({
+      toolName: "search_user_guide",
+      arguments: {
+        query: "find candidate by email",
+        limit: 3,
+      },
+      proposedBy: "code",
+      reason: "Default recruitment guide retrieval.",
+    });
+    expect(authorization).toEqual({
+      status: "allowed",
+      capability: "read",
+      requiresApproval: false,
+    });
+  });
+
+  it("keeps the legacy guide search plan helper scoped to search", () => {
+    expect(
+      createAiRecruitmentGuideSearchPlan("Mở trang /jd-cv-matching"),
+    ).toEqual({
+      toolName: "search_user_guide",
+      arguments: {
+        query: "Mở trang /jd-cv-matching",
+        limit: 3,
+      },
+      proposedBy: "code",
+      reason: "Default recruitment guide retrieval.",
+    });
+  });
+
+  it("blocks future write or action MCP plans until an approval node is wired", () => {
+    const writeTool: AiRecruitmentMcpToolDefinition = {
+      name: "update_candidate_status",
+      title: "Update candidate status",
+      description: "Update a candidate status in the recruitment platform.",
+      capability: "write",
+      approvalPolicy: "always",
+      readOnly: false,
+      argumentsSchema: z
+        .object({
+          candidateId: z.string().min(1),
+          status: z.enum(["interviewing", "offer"]),
+        })
+        .strict(),
+    };
+    const plan: AiRecruitmentMcpActionPlan = {
+      toolName: "update_candidate_status",
+      arguments: {
+        candidateId: "cand_123",
+        status: "interviewing",
+      },
+      proposedBy: "model",
+      reason: "User asked to move a candidate to interviewing.",
+    };
+
+    expect(authorizeAiRecruitmentMcpAction(plan, writeTool)).toEqual({
+      status: "requires_approval",
+      capability: "write",
+      requiresApproval: true,
+    });
+  });
+
+  it("creates a JSON-serializable approval request for future write/action MCP plans", () => {
+    const writeTool: AiRecruitmentMcpToolDefinition = {
+      name: "update_candidate_status",
+      title: "Update candidate status",
+      description: "Update a candidate status in the recruitment platform.",
+      capability: "write",
+      approvalPolicy: "always",
+      readOnly: false,
+      argumentsSchema: z
+        .object({
+          candidateId: z.string().min(1),
+          status: z.enum(["interviewing", "offer"]),
+        })
+        .strict(),
+    };
+    const plan: AiRecruitmentMcpActionPlan = {
+      toolName: "update_candidate_status",
+      arguments: {
+        candidateId: "cand_123",
+        status: "interviewing",
+      },
+      proposedBy: "model",
+      reason: "User asked to move a candidate to interviewing.",
+    };
+
+    const request = createAiRecruitmentMcpApprovalRequest(plan, writeTool);
+
+    expect(JSON.parse(JSON.stringify(request))).toEqual(request);
+    expect(request).toMatchObject({
+      serverId: "ai-recruitment",
+      toolName: "update_candidate_status",
+      title: "Update candidate status",
+      capability: "write",
+      allowedDecisions: ["approve", "edit", "reject"],
+    });
+  });
+
+  it("resolves approval decisions without letting edits switch tools", () => {
+    const writeTool: AiRecruitmentMcpToolDefinition = {
+      name: "update_candidate_status",
+      title: "Update candidate status",
+      description: "Update a candidate status in the recruitment platform.",
+      capability: "write",
+      approvalPolicy: "always",
+      readOnly: false,
+      argumentsSchema: z
+        .object({
+          candidateId: z.string().min(1),
+          status: z.enum(["interviewing", "offer"]),
+        })
+        .strict(),
+    };
+    const plan: AiRecruitmentMcpActionPlan = {
+      toolName: "update_candidate_status",
+      arguments: {
+        candidateId: "cand_123",
+        status: "interviewing",
+      },
+      proposedBy: "model",
+      reason: "User asked to move a candidate to interviewing.",
+    };
+
+    expect(
+      resolveAiRecruitmentMcpApprovalDecision(plan, writeTool, {
+        type: "approve",
+      }),
+    ).toEqual({ status: "approved", plan });
+    expect(
+      resolveAiRecruitmentMcpApprovalDecision(plan, writeTool, {
+        type: "edit",
+        arguments: {
+          candidateId: "cand_123",
+          status: "offer",
+        },
+      }),
+    ).toEqual({
+      status: "approved",
+      plan: {
+        ...plan,
+        arguments: {
+          candidateId: "cand_123",
+          status: "offer",
+        },
+      },
+    });
+    expect(
+      resolveAiRecruitmentMcpApprovalDecision(plan, writeTool, {
+        type: "reject",
+        reason: "Wrong candidate",
+      }),
+    ).toEqual({ status: "rejected", reason: "Wrong candidate" });
+  });
+
+  it("executes read-only MCP plans without approval", async () => {
+    const execute = vi.fn().mockResolvedValue("guide-result");
+    const plan = createAiRecruitmentGuideSearchPlan("find candidate by email");
+
+    const result = await executeAiRecruitmentMcpAction(
+      plan,
+      AGENTIC_MCP_REGISTRY.aiRecruitment.allowedTools.searchUserGuide,
+      execute,
+      {
+        approvalHandler: vi.fn(() => {
+          throw new Error("approval should not run for read-only plans");
+        }),
+      },
+    );
+
+    expect(result).toEqual({
+      status: "success",
+      capability: "read",
+      value: "guide-result",
+    });
+    expect(execute).toHaveBeenCalledWith(plan);
+  });
+
+  it("does not execute write/action MCP plans when approval rejects", async () => {
+    const writeTool: AiRecruitmentMcpToolDefinition = {
+      name: "update_candidate_status",
+      title: "Update candidate status",
+      description: "Update a candidate status in the recruitment platform.",
+      capability: "write",
+      approvalPolicy: "always",
+      readOnly: false,
+      argumentsSchema: z
+        .object({
+          candidateId: z.string().min(1),
+          status: z.enum(["interviewing", "offer"]),
+        })
+        .strict(),
+    };
+    const plan: AiRecruitmentMcpActionPlan = {
+      toolName: "update_candidate_status",
+      arguments: {
+        candidateId: "cand_123",
+        status: "interviewing",
+      },
+      proposedBy: "model",
+      reason: "User asked to move a candidate to interviewing.",
+    };
+    const execute = vi.fn().mockResolvedValue("updated");
+
+    const result = await executeAiRecruitmentMcpAction(
+      plan,
+      writeTool,
+      execute,
+      {
+        approvalHandler: () => ({
+          status: "rejected",
+          reason: "Wrong candidate",
+        }),
+      },
+    );
+
+    expect(result).toEqual({
+      status: "rejected",
+      capability: "write",
+      reason: "Wrong candidate",
+    });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("executes approved write/action MCP plans with reviewer-edited arguments", async () => {
+    const writeTool: AiRecruitmentMcpToolDefinition = {
+      name: "update_candidate_status",
+      title: "Update candidate status",
+      description: "Update a candidate status in the recruitment platform.",
+      capability: "write",
+      approvalPolicy: "always",
+      readOnly: false,
+      argumentsSchema: z
+        .object({
+          candidateId: z.string().min(1),
+          status: z.enum(["interviewing", "offer"]),
+        })
+        .strict(),
+    };
+    const plan: AiRecruitmentMcpActionPlan = {
+      toolName: "update_candidate_status",
+      arguments: {
+        candidateId: "cand_123",
+        status: "interviewing",
+      },
+      proposedBy: "model",
+      reason: "User asked to move a candidate to interviewing.",
+    };
+    const execute = vi.fn().mockResolvedValue("updated");
+
+    const result = await executeAiRecruitmentMcpAction(
+      plan,
+      writeTool,
+      execute,
+      {
+        approvalHandler: () => ({
+          status: "approved",
+          plan: {
+            ...plan,
+            arguments: {
+              candidateId: "cand_123",
+              status: "offer",
+            },
+          },
+        }),
+      },
+    );
+
+    expect(result).toEqual({
+      status: "success",
+      capability: "write",
+      value: "updated",
+    });
+    expect(execute).toHaveBeenCalledWith({
+      ...plan,
+      arguments: {
+        candidateId: "cand_123",
+        status: "offer",
+      },
+    });
+  });
+
+  it("denies approved MCP plans when approval changes the tool or invalidates arguments", async () => {
+    const writeTool: AiRecruitmentMcpToolDefinition = {
+      name: "update_candidate_status",
+      title: "Update candidate status",
+      description: "Update a candidate status in the recruitment platform.",
+      capability: "write",
+      approvalPolicy: "always",
+      readOnly: false,
+      argumentsSchema: z
+        .object({
+          candidateId: z.string().min(1),
+          status: z.enum(["interviewing", "offer"]),
+        })
+        .strict(),
+    };
+    const plan: AiRecruitmentMcpActionPlan = {
+      toolName: "update_candidate_status",
+      arguments: {
+        candidateId: "cand_123",
+        status: "interviewing",
+      },
+      proposedBy: "model",
+      reason: "User asked to move a candidate to interviewing.",
+    };
+    const execute = vi.fn().mockResolvedValue("updated");
+
+    await expect(
+      executeAiRecruitmentMcpAction(plan, writeTool, execute, {
+        approvalHandler: () => ({
+          status: "approved",
+          plan: {
+            ...plan,
+            toolName: "delete_candidate",
+          },
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "denied",
+      reason: expect.stringContaining("does not match policy tool"),
+    });
+    await expect(
+      executeAiRecruitmentMcpAction(plan, writeTool, execute, {
+        approvalHandler: () => ({
+          status: "approved",
+          plan: {
+            ...plan,
+            arguments: {
+              candidateId: "cand_123",
+              status: "hired_without_review",
+            },
+          },
+        }),
+      }),
+    ).resolves.toMatchObject({
+      status: "denied",
+      reason: expect.stringContaining("arguments failed policy validation"),
+    });
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("retrieves recruitment guidance from the ai-recruitment MCP when configured", async () => {
@@ -277,6 +648,53 @@ describe("HR retrievers", () => {
         status: "success",
         toolName: "search_user_guide",
       }),
+    );
+  });
+
+  it("uses the planned read-only guide MCP tool for known page requests", async () => {
+    const fetchImpl = createMcpFetch({
+      tools: [
+        {
+          name: "get_user_guide_page",
+          inputSchema: {
+            type: "object",
+            properties: { slug: { type: "string" } },
+          },
+        },
+      ],
+      text: "JD CV matching guide page.",
+    });
+    const events: unknown[] = [];
+
+    const result = await retrieveRecruitmentContext(
+      "Mở trang /jd-cv-matching",
+      {
+        env: { AI_RECRUITMENT_MCP_AUTH_TOKEN: "mcp-secret" },
+        fetchImpl,
+        onMcpEvent: (event) => events.push(event),
+      },
+    );
+
+    expect(result.warnings).toEqual([]);
+    const methods = parsedMcpBodies(fetchImpl);
+    expect(methods[3]).toMatchObject({
+      method: "tools/call",
+      params: {
+        name: "get_user_guide_page",
+        arguments: {
+          slug: "/jd-cv-matching",
+        },
+      },
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        serverId: "ai-recruitment",
+        status: "success",
+        toolName: "get_user_guide_page",
+      }),
+    );
+    expect(result.documents[0]?.content).toContain(
+      "ai-recruitment/get_user_guide_page",
     );
   });
 
