@@ -35,6 +35,64 @@ export interface UseAgentChatReturn {
 }
 
 const SESSION_STORAGE_KEY = "agent_chat_session";
+const HISTORY_STORAGE_KEY = "agent_chat_history";
+const MAX_STORED_MESSAGES = 100;
+
+type StoredMessage = Omit<Message, "timestamp"> & { timestamp: string };
+
+function getSessionStorageKey(workspaceId: string): string {
+  return `${SESSION_STORAGE_KEY}:${workspaceId}`;
+}
+
+function getHistoryStorageKey(sessionId: string): string {
+  return `${HISTORY_STORAGE_KEY}:${sessionId}`;
+}
+
+function parseStoredMessages(raw: string | null): Message[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as StoredMessage[];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter(
+        (message): message is StoredMessage =>
+          typeof message?.id === "string" &&
+          (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string" &&
+          typeof message.timestamp === "string",
+      )
+      .map((message) => ({
+        ...message,
+        timestamp: new Date(message.timestamp),
+      }))
+      .filter((message) => Number.isFinite(message.timestamp.getTime()));
+  } catch {
+    return [];
+  }
+}
+
+function persistMessages(sessionId: string, messages: Message[]): void {
+  const messagesToStore = messages
+    .filter((message) => message.content.length > 0)
+    .slice(-MAX_STORED_MESSAGES);
+
+  const key = getHistoryStorageKey(sessionId);
+  if (messagesToStore.length === 0) {
+    localStorage.removeItem(key);
+    return;
+  }
+
+  const stored: StoredMessage[] = messagesToStore.map((message) => ({
+    ...message,
+    timestamp: message.timestamp.toISOString(),
+  }));
+  try {
+    localStorage.setItem(key, JSON.stringify(stored));
+  } catch {
+    // History is a recoverable client-side cache; quota/storage failures must not break chat.
+  }
+}
 
 export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
   const { workspaceId, onError } = options;
@@ -52,9 +110,8 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
 
   const initSession = useCallback(async () => {
     try {
-      const stored = localStorage.getItem(
-        `${SESSION_STORAGE_KEY}:${workspaceId}`,
-      );
+      const sessionStorageKey = getSessionStorageKey(workspaceId);
+      const stored = localStorage.getItem(sessionStorageKey);
       if (stored) {
         const parsed = JSON.parse(stored) as {
           token: string;
@@ -64,10 +121,16 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
         if (new Date(parsed.expiresAt) > new Date()) {
           tokenRef.current = parsed.token;
           sessionIdRef.current = parsed.sessionId;
+          setMessages(
+            parseStoredMessages(
+              localStorage.getItem(getHistoryStorageKey(parsed.sessionId)),
+            ),
+          );
           setIsReady(true);
           return;
         }
-        localStorage.removeItem(`${SESSION_STORAGE_KEY}:${workspaceId}`);
+        localStorage.removeItem(sessionStorageKey);
+        localStorage.removeItem(getHistoryStorageKey(parsed.sessionId));
       }
 
       const response = await fetch(`${getApiUrl()}/widget/session`, {
@@ -83,11 +146,9 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
       const data = (await response.json()) as SessionResponse;
       tokenRef.current = data.token;
       sessionIdRef.current = data.sessionId;
+      setMessages([]);
 
-      localStorage.setItem(
-        `${SESSION_STORAGE_KEY}:${workspaceId}`,
-        JSON.stringify(data),
-      );
+      localStorage.setItem(sessionStorageKey, JSON.stringify(data));
 
       setIsReady(true);
     } catch (err) {
@@ -104,6 +165,11 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
       abortRef.current?.abort();
     };
   }, [initSession]);
+
+  useEffect(() => {
+    if (!sessionIdRef.current) return;
+    persistMessages(sessionIdRef.current, messages);
+  }, [messages]);
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -146,7 +212,11 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
           });
 
           if (response.status === 401) {
-            localStorage.removeItem(`${SESSION_STORAGE_KEY}:${workspaceId}`);
+            const currentSessionId = sessionIdRef.current;
+            localStorage.removeItem(getSessionStorageKey(workspaceId));
+            if (currentSessionId) {
+              localStorage.removeItem(getHistoryStorageKey(currentSessionId));
+            }
             tokenRef.current = null;
             sessionIdRef.current = null;
             await initSession();
@@ -215,7 +285,11 @@ export function useAgentChat(options: UseAgentChatOptions): UseAgentChatReturn {
 
   const resetSession = useCallback(() => {
     abortRef.current?.abort();
-    localStorage.removeItem(`${SESSION_STORAGE_KEY}:${workspaceId}`);
+    const currentSessionId = sessionIdRef.current;
+    localStorage.removeItem(getSessionStorageKey(workspaceId));
+    if (currentSessionId) {
+      localStorage.removeItem(getHistoryStorageKey(currentSessionId));
+    }
     tokenRef.current = null;
     sessionIdRef.current = null;
     setMessages([]);

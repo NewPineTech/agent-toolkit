@@ -249,18 +249,36 @@ def parse_confidence(markdown_output: str) -> int | None:
     return None
 
 
-def append_source_metadata(markdown: str, file_record: dict) -> str:
-    """Thêm metadata footer vào Markdown để tracking."""
-    footer = (
-        f"\n\n---\n\n"
-        f"<!-- Source metadata (do not edit, used for ingest) -->\n"
+def extract_process_name(markdown: str, file_record: dict) -> str:
+    """Extract process name from OCR Markdown, fallback to filename stem."""
+    h1_match = re.search(r"^#\s+(.+?)\s*$", markdown, re.MULTILINE)
+    if h1_match:
+        return h1_match.group(1).strip()
+    return Path(file_record["file_name"]).stem
+
+
+def build_source_metadata_block(markdown: str, file_record: dict) -> str:
+    """Build form-style source metadata block for Markdown header/footer."""
+    return (
+        f"---\n\n"
+        f"<!-- Source metadata (do not edit) -->\n"
+        f"<!-- process_code: {file_record.get('process_code', '')} -->\n"
+        f"<!-- process_name: {extract_process_name(markdown, file_record)} -->\n"
+        f"<!-- department: {file_record['department']} -->\n"
+        f"<!-- source_url: {file_record['web_view_link']} -->\n"
+        f"<!-- file_format: {file_record.get('file_extension', '')} -->\n"
+        f"<!-- file_size_kb: {file_record.get('file_size_kb', '')} -->\n"
+        f"<!-- last_modified: {file_record.get('modified_time', '')} -->\n"
         f"<!-- source_file_id: {file_record['file_id']} -->\n"
         f"<!-- source_file_name: {file_record['file_name']} -->\n"
-        f"<!-- source_url: {file_record['web_view_link']} -->\n"
-        f"<!-- department: {file_record['department']} -->\n"
         f"<!-- full_path: {file_record['full_path']} -->\n"
     )
-    return markdown.rstrip() + footer
+
+
+def append_source_metadata(markdown: str, file_record: dict) -> str:
+    """Thêm metadata cùng format form files ở đầu và cuối Markdown."""
+    metadata = build_source_metadata_block(markdown, file_record)
+    return f"{metadata}\n{markdown.rstrip()}\n\n{metadata}"
 
 
 # ============================================================

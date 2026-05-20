@@ -245,4 +245,96 @@ describe("AgentChatWidget — typewriter integration", () => {
     const reopenedMd = reopenedEls[reopenedEls.length - 1];
     expect(reopenedMd?.textContent).toBe("Hello world");
   });
+
+  it("restores message history stored for the current session", async () => {
+    localStorage.setItem(
+      "agent_chat_session:ws_test",
+      JSON.stringify({
+        token: "test-jwt-token",
+        sessionId: "sess_test",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }),
+    );
+    localStorage.setItem(
+      "agent_chat_history:sess_test",
+      JSON.stringify([
+        {
+          id: "msg_user",
+          role: "user",
+          content: "Saved question",
+          timestamp: new Date("2026-05-20T08:00:00.000Z").toISOString(),
+        },
+        {
+          id: "msg_assistant",
+          role: "assistant",
+          content: "Saved answer",
+          timestamp: new Date("2026-05-20T08:00:01.000Z").toISOString(),
+        },
+      ]),
+    );
+
+    render(<AgentChatWidget workspaceId="ws_test" initialOpen />);
+    await flushAsync(100);
+
+    expect(screen.getByText("Saved question")).toBeTruthy();
+    expect(screen.getByText("Saved answer")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `${TEST_API_URL}/widget/session`,
+      expect.anything(),
+    );
+  });
+
+  it("clears stored history for the current session when reset is pressed", async () => {
+    localStorage.setItem(
+      "agent_chat_session:ws_test",
+      JSON.stringify({
+        token: "test-jwt-token",
+        sessionId: "sess_test",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }),
+    );
+    localStorage.setItem(
+      "agent_chat_history:sess_test",
+      JSON.stringify([
+        {
+          id: "msg_user",
+          role: "user",
+          content: "Saved question",
+          timestamp: new Date("2026-05-20T08:00:00.000Z").toISOString(),
+        },
+      ]),
+    );
+
+    render(<AgentChatWidget workspaceId="ws_test" initialOpen />);
+    await flushAsync(100);
+
+    fireEvent.click(screen.getByLabelText("Reset session"));
+    await flushAsync(100);
+
+    expect(localStorage.getItem("agent_chat_history:sess_test")).toBeNull();
+    expect(screen.queryByText("Saved question")).toBeNull();
+  });
+
+  it("stores completed chat history under the current session id", async () => {
+    render(<AgentChatWidget workspaceId="ws_test" initialOpen />);
+    await flushAsync(100);
+
+    const input = screen.getByLabelText(
+      "Chat message input",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "hi" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await flushAsync(0);
+    await flushAsync(0);
+
+    const stored = JSON.parse(
+      localStorage.getItem("agent_chat_history:sess_test") ?? "[]",
+    ) as Array<{ role: string; content: string }>;
+
+    expect(stored).toEqual([
+      expect.objectContaining({ role: "user", content: "hi" }),
+      expect.objectContaining({ role: "assistant", content: "Hello world" }),
+    ]);
+  });
 });
