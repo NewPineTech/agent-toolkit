@@ -1,11 +1,19 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { AuthMode } from "@agent-toolkit/types";
+import {
+  AuthMode,
+  ProviderType,
+  type ChatStreamEvent,
+} from "@agent-toolkit/types";
 import type { Workspace } from "@agent-toolkit/types";
 import type { AppCradle } from "../app.js";
 import { AppError } from "../factories/error-response.factory.js";
 import { schema, type Database } from "../db/index.js";
+import {
+  AgenticRunAuditRecorder,
+  type AgenticRunAuditContext,
+} from "../admin/agentic-run-audit.recorder.js";
 
 interface SessionBody {
   workspaceId: string;
@@ -211,6 +219,18 @@ export async function widgetRoutes(
         reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       };
 
+      const audit = await startAgenticWidgetAudit({
+        cradle,
+        workspace,
+        requestId: request.id,
+        threadId: session.providerSessionId!,
+        widgetSessionId: sessionId,
+        message,
+      });
+      let finalAnswer = "";
+      const warningCodes: string[] = [];
+      let failed = false;
+
       try {
         const stream = provider.sendMessage(
           config,
@@ -220,9 +240,14 @@ export async function widgetRoutes(
 
         for await (const event of stream) {
           if (reply.raw.destroyed) break;
+          collectAgenticAuditSignal(event, warningCodes, (content) => {
+            finalAnswer += content;
+          });
+          if (event.type === "error") failed = true;
           writeSSE(event);
         }
       } catch (err) {
+        failed = true;
         cradle.logger.error("Stream error", {
           error: err instanceof Error ? err.message : String(err),
           requestId: request.id,
@@ -235,18 +260,34 @@ export async function widgetRoutes(
           });
         }
       } finally {
-        await Promise.all([
+        await Promise.allSettled([
+          finishAgenticWidgetAudit({
+            audit,
+            failed,
+            finalAnswer,
+            message,
+            warningCodes,
+            workspaceId,
+            threadId: session.providerSessionId!,
+          }),
           cradle.sessionStore.updateLastActive(sessionId),
           cradle.usageTracker.increment(
             workspaceId,
             new Date().toISOString().slice(0, 10),
           ),
-        ]).catch((err) => {
-          cradle.logger.error("Post-stream bookkeeping failed", {
-            error: err instanceof Error ? err.message : String(err),
-            sessionId,
-            workspaceId,
-          });
+        ]).then((results) => {
+          for (const result of results) {
+            if (result.status === "rejected") {
+              cradle.logger.error("Post-stream bookkeeping failed", {
+                error:
+                  result.reason instanceof Error
+                    ? result.reason.message
+                    : String(result.reason),
+                sessionId,
+                workspaceId,
+              });
+            }
+          }
         });
 
         reply.raw.end();
@@ -276,6 +317,120 @@ export async function widgetRoutes(
     );
     return reply.status(statusCode).send(body);
   });
+}
+
+interface AgenticWidgetAuditStartInput {
+  cradle: AppCradle;
+  workspace: Workspace;
+  requestId: string;
+  threadId: string;
+  widgetSessionId: string;
+  message: string;
+}
+
+interface AgenticWidgetAuditHandle {
+  recorder: AgenticRunAuditRecorder;
+  run: AgenticRunAuditContext;
+}
+
+async function startAgenticWidgetAudit({
+  cradle,
+  workspace,
+  requestId,
+  threadId,
+  widgetSessionId,
+  message,
+}: AgenticWidgetAuditStartInput): Promise<AgenticWidgetAuditHandle | null> {
+  if (workspace.providerType !== ProviderType.LANGGRAPH) return null;
+
+  try {
+    const recorder = new AgenticRunAuditRecorder(cradle.agenticRunAuditStore);
+    const run = await recorder.startRun({
+      runId: `widget_${requestId}`,
+      threadId,
+      workspaceId: workspace.id,
+      stateDelta: {
+        input: message,
+        widgetSessionId,
+        providerType: workspace.providerType,
+      },
+    });
+    await recorder.recordStep(run, {
+      nodeName: "widget.chat",
+      logicalStep: "input",
+      status: "completed",
+      evidenceRefs: [],
+      stateDelta: { input: message, widgetSessionId },
+    });
+    return { recorder, run };
+  } catch (error) {
+    cradle.logger.warn("Agentic audit start failed", {
+      error: error instanceof Error ? error.message : String(error),
+      requestId,
+      workspaceId: workspace.id,
+    });
+    return null;
+  }
+}
+
+function collectAgenticAuditSignal(
+  event: ChatStreamEvent,
+  warningCodes: string[],
+  appendToken: (content: string) => void,
+): void {
+  if (event.type === "token") {
+    appendToken(event.content);
+    return;
+  }
+
+  if (event.type !== "metadata") return;
+  const warning = event.data["warning"];
+  if (typeof warning === "string") {
+    warningCodes.push(warning);
+  }
+}
+
+async function finishAgenticWidgetAudit(input: {
+  audit: AgenticWidgetAuditHandle | null;
+  failed: boolean;
+  finalAnswer: string;
+  message: string;
+  warningCodes: string[];
+  workspaceId: string;
+  threadId: string;
+}): Promise<void> {
+  if (!input.audit) return;
+  const uniqueWarnings = [...new Set(input.warningCodes)];
+  await input.audit.recorder.recordStep(input.audit.run, {
+    nodeName: "langgraph.agentic",
+    logicalStep: "final_answer",
+    status: input.failed ? "failed" : "completed",
+    warningCodes: uniqueWarnings,
+    stateDelta: {
+      input: input.message,
+      finalAnswer: input.finalAnswer,
+      workspaceId: input.workspaceId,
+      threadId: input.threadId,
+    },
+  });
+
+  const finishInput = {
+    warningCodes: uniqueWarnings,
+    selectedIntents: [],
+    stateDelta: {
+      input: input.message,
+      finalAnswer: input.finalAnswer,
+      workspaceId: input.workspaceId,
+      threadId: input.threadId,
+    },
+  };
+
+  if (input.failed) {
+    await input.audit.recorder.failRun(input.audit.run, finishInput);
+    return;
+  }
+
+  await input.audit.recorder.completeRun(input.audit.run, finishInput);
 }
 
 async function resolveWorkspace(

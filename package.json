@@ -11,6 +11,7 @@
     "dev:server": "pnpm --filter @agent-toolkit/server run dev",
     "dev:langgraph": "pnpm --filter @agent-toolkit/agentic run dev:server",
     "dev:langstudio": "pnpm --filter @agent-toolkit/agentic run dev",
+    "dev:admin": "pnpm --filter @agent-toolkit/admin run dev",
     "dev:widget": "pnpm --filter @agent-toolkit/widget run dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

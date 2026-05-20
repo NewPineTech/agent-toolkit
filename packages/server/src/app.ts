@@ -14,9 +14,11 @@ import { CompositeHealthChecker } from "./adapters/infra/composite-health.checke
 import { healthRoutes } from "./routes/health.routes.js";
 import { widgetRoutes } from "./routes/widget.routes.js";
 import { embedRoute } from "./routes/embed.route.js";
+import { agenticInspectorRoutes } from "./admin/agentic-inspector.routes.js";
 import { JwtTokenService } from "./adapters/security/jwt-token.service.js";
 import { PostgresSessionStore } from "./adapters/storage/postgres-session.store.js";
 import { PostgresUsageTracker } from "./adapters/storage/postgres-usage.tracker.js";
+import { PostgresAgenticRunAuditStore } from "./adapters/storage/postgres-agentic-run-audit.store.js";
 import { RedisSessionCache } from "./adapters/storage/redis-session.cache.js";
 import { RedisWorkspaceCache } from "./adapters/storage/redis-workspace.cache.js";
 import { RedisRateLimiter } from "./adapters/infra/redis-rate.limiter.js";
@@ -37,6 +39,7 @@ export interface AppCradle {
   sessionStore: PostgresSessionStore;
   sessionCache: RedisSessionCache;
   usageTracker: PostgresUsageTracker;
+  agenticRunAuditStore: PostgresAgenticRunAuditStore;
   rateLimiter: RedisRateLimiter;
   workspaceCache: RedisWorkspaceCache;
   logger: PinoLoggerAdapter;
@@ -105,6 +108,10 @@ export async function createApp(config: Config) {
       Lifetime.SINGLETON,
     ),
 
+    agenticRunAuditStore: asFunction(
+      () => new PostgresAgenticRunAuditStore(db),
+    ).setLifetime(Lifetime.SINGLETON),
+
     rateLimiter: asFunction(() => new RedisRateLimiter(redis)).setLifetime(
       Lifetime.SINGLETON,
     ),
@@ -151,6 +158,10 @@ export async function createApp(config: Config) {
 
   await app.register(healthRoutes, {
     healthChecker: new CompositeHealthChecker(pool, redis),
+  });
+  await app.register(agenticInspectorRoutes, {
+    auditStore: diContainer.cradle.agenticRunAuditStore,
+    config,
   });
   await app.register(widgetRoutes, { db });
   await app.register(embedRoute);
