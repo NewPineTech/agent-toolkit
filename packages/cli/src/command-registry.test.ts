@@ -82,4 +82,82 @@ describe("command registry", () => {
       "widget.preview",
     ]);
   });
+
+  it("resolves widget and chat API URLs from the operator Widget API URL default", () => {
+    const commandsWithApiUrlDefaults = commandSpecs
+      .filter((command) =>
+        [...command.args, ...command.options].some(
+          (field) => field.name === "apiUrl",
+        ),
+      )
+      .map((command) => [
+        command.id,
+        [...command.args, ...command.options].find(
+          (field) => field.name === "apiUrl",
+        )?.defaultSource,
+      ]);
+
+    expect(commandsWithApiUrlDefaults).toEqual([
+      ["widget.snippet", "operator:WIDGET_API_URL"],
+      ["widget.iframe", "operator:WIDGET_API_URL"],
+      ["widget.script", "operator:WIDGET_API_URL"],
+      ["widget.preview", "operator:WIDGET_API_URL"],
+      ["widget.test", "operator:WIDGET_API_URL"],
+      ["chat.ask", "operator:WIDGET_API_URL"],
+      ["chat.session.create", "operator:WIDGET_API_URL"],
+    ]);
+  });
+
+  it("marks widget appearance options as advanced details", () => {
+    const widgetIframe = commandSpecs.find(
+      (command) => command.id === "widget.iframe",
+    );
+
+    expect(
+      widgetIframe?.options
+        .filter((field) => field.advanced)
+        .map((field) => field.name),
+    ).toEqual([
+      "title",
+      "subtitle",
+      "placeholder",
+      "greeting",
+      "suggestions",
+      "primaryColor",
+      "backgroundColor",
+      "textColor",
+      "position",
+      "initialOpen",
+    ]);
+  });
+
+  it("keeps safe workspace create defaults available for smart review", () => {
+    const workspaceCreate = commandSpecs.find(
+      (command) => command.id === "workspace.create",
+    );
+
+    expect(
+      workspaceCreate?.options
+        .filter((field) => field.defaultValue !== undefined)
+        .map((field) => [field.name, field.defaultValue]),
+    ).toEqual([
+      ["providerType", "langgraph"],
+      ["domains", "*"],
+      ["authMode", "anonymous"],
+      ["maxRequests", "30"],
+      ["windowMs", "60000"],
+      ["maxMessageLength", "4000"],
+    ]);
+    expect(
+      workspaceCreate?.options.find((field) => field.name === "id")?.advanced,
+    ).toBe(true);
+    expect(
+      workspaceCreate?.options.find((field) => field.name === "providerType")
+        ?.promptFirst,
+    ).toBe(true);
+    expect(
+      workspaceCreate?.options.find((field) => field.name === "apiKey")
+        ?.defaultSource,
+    ).toBe("operator:LANGGRAPH_API_KEY");
+  });
 });

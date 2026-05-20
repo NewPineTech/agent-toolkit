@@ -27,6 +27,10 @@ export type WorkspaceSummary = Pick<
   "id" | "provider_type" | "auth_mode" | "created_at"
 >;
 
+export interface WorkspaceIdRow {
+  id: string;
+}
+
 export interface SessionRow {
   id: string;
   workspace_id: string;
@@ -77,4 +81,26 @@ export async function listWorkspaceSummaries(
     "select id, provider_type, auth_mode, created_at from workspaces order by created_at desc",
   );
   return result.rows;
+}
+
+export async function listGeneratedWorkspaceIds(
+  pool: Pick<pg.Pool, "query">,
+): Promise<string[]> {
+  const result = await pool.query<WorkspaceIdRow>(
+    "select id from workspaces where id like $1",
+    ["ws_%"],
+  );
+  return result.rows.map((row) => row.id);
+}
+
+export async function getNextGeneratedWorkspaceId(
+  pool: Pick<pg.Pool, "query">,
+): Promise<string> {
+  const workspaceIds = await listGeneratedWorkspaceIds(pool);
+  const maxGeneratedSuffix = workspaceIds.reduce((maxSuffix, workspaceId) => {
+    const match = /^ws_(\d+)$/.exec(workspaceId);
+    if (!match) return maxSuffix;
+    return Math.max(maxSuffix, Number(match[1]));
+  }, 0);
+  return `ws_${maxGeneratedSuffix + 1}`;
 }

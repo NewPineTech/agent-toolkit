@@ -1,10 +1,332 @@
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
 import { copyTextToClipboard, TuiApp } from "./app.js";
+import type { ResolvedOperatorDefault } from "../operator-defaults.js";
+
+const widgetApiUrlDefault: ResolvedOperatorDefault = {
+  name: "WIDGET_API_URL",
+  secret: false,
+  source: ".env.prod",
+  value: "https://api.example.com",
+};
 
 describe("TuiApp", () => {
-  it("renders a grouped feature picker before command details", () => {
+  it("starts with operator tasks before advanced commands", () => {
     const { lastFrame } = render(<TuiApp />);
+
+    expect(lastFrame()).toContain("Agent Toolkit");
+    expect(lastFrame()).toContain("Setup widget");
+    expect(lastFrame()).toContain("Advanced commands");
+    expect(lastFrame()).not.toContain("workspace create");
+    expect(lastFrame()).not.toContain("widget iframe");
+  });
+
+  it("generates widget output from the setup-widget flow using saved API URL defaults", async () => {
+    const copied: string[] = [];
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        loadWorkspaces={async () => [
+          {
+            id: "ws_existing",
+            providerType: "langgraph",
+            authMode: "anonymous",
+            createdAt: "2026-05-20T00:00:00.000Z",
+          },
+        ]}
+        resolveDefault={(name) =>
+          name === "WIDGET_API_URL"
+            ? widgetApiUrlDefault
+            : {
+                name,
+                secret: name === "LANGGRAPH_API_KEY",
+                source: "missing",
+                value: undefined,
+              }
+        }
+        copyToClipboard={async (value) => {
+          copied.push(value);
+        }}
+      />,
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lastFrame()).toContain("Select workspace");
+    expect(lastFrame()).toContain("ws_existing - langgraph / anonymous");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Choose embed type");
+    expect(lastFrame()).toContain("iframe");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Review widget setup");
+    expect(lastFrame()).toContain("Workspace: ws_existing");
+    expect(lastFrame()).toContain("Widget API URL: https://api.example.com");
+    expect(lastFrame()).toContain("Source: .env.prod");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("<iframe");
+    expect(lastFrame()).toContain(
+      "https://api.example.com/widget/embed?workspaceId=ws_existing",
+    );
+    expect(lastFrame()).toContain("Copy output to clipboard");
+    expect(lastFrame()).toContain("Test widget access");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(copied[0]).toContain("<iframe");
+  });
+
+  it("prompts once for Widget API URL when no operator default exists", async () => {
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        loadWorkspaces={async () => [
+          {
+            id: "ws_existing",
+            providerType: "langgraph",
+            authMode: "anonymous",
+            createdAt: "2026-05-20T00:00:00.000Z",
+          },
+        ]}
+        resolveDefault={(name) => ({
+          name,
+          secret: name === "LANGGRAPH_API_KEY",
+          source: "missing",
+          value: undefined,
+        })}
+      />,
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Public Agent Toolkit server URL");
+    expect(lastFrame()).toContain("Widget API URL: (missing)");
+
+    stdin.write("https://operator.example.com\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain(
+      "Widget API URL: https://operator.example.com",
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain(
+      "https://operator.example.com/widget/embed?workspaceId=ws_existing",
+    );
+  });
+
+  it("passes optional appearance customization through existing widget runners", async () => {
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        loadWorkspaces={async () => [
+          {
+            id: "ws_existing",
+            providerType: "langgraph",
+            authMode: "anonymous",
+            createdAt: "2026-05-20T00:00:00.000Z",
+          },
+        ]}
+        resolveDefault={(name) =>
+          name === "WIDGET_API_URL"
+            ? widgetApiUrlDefault
+            : {
+                name,
+                secret: name === "LANGGRAPH_API_KEY",
+                source: "missing",
+                value: undefined,
+              }
+        }
+      />,
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    for (let index = 0; index < 4; index += 1) {
+      stdin.write("\u001b[B");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Customize appearance");
+    expect(lastFrame()).toContain("Widget title");
+
+    stdin.write("Agent Desk\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Widget title: Agent Desk");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("title=Agent+Desk");
+    expect(lastFrame()).toContain('title="Agent Desk"');
+  });
+
+  it("creates a LangGraph workspace from setup flow defaults without showing the API key", async () => {
+    const created: Array<Record<string, string | undefined>> = [];
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        loadWorkspaces={async () => []}
+        resolveDefault={(name) => {
+          if (name === "WIDGET_API_URL") return widgetApiUrlDefault;
+          if (name === "LANGGRAPH_API_KEY") {
+            return {
+              name,
+              secret: true,
+              source: ".env.prod",
+              value: "lg-secret",
+            };
+          }
+          return { name, secret: false, source: "missing", value: undefined };
+        }}
+        createWorkspace={async (values) => {
+          created.push(values);
+          return "ws_42";
+        }}
+      />,
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("No workspaces found.");
+    expect(lastFrame()).toContain("Create new workspace");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Choose provider type");
+    expect(lastFrame()).toContain("langgraph");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Review workspace creation");
+    expect(lastFrame()).toContain("Provider: langgraph");
+    expect(lastFrame()).toContain("Agent ID: hr_assistant");
+    expect(lastFrame()).toContain("LANGGRAPH_API_KEY: [hidden]");
+    expect(lastFrame()).not.toContain("lg-secret");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(created).toMatchObject([
+      {
+        providerType: "langgraph",
+        agentId: "hr_assistant",
+        apiKey: "lg-secret",
+        domains: "*",
+        authMode: "anonymous",
+      },
+    ]);
+    expect(created[0]?.baseUrl).toContain("http://localhost:");
+    expect(lastFrame()).toContain("Choose embed type");
+  });
+
+  it("blocks LangGraph workspace creation when LANGGRAPH_API_KEY is missing", async () => {
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        loadWorkspaces={async () => []}
+        resolveDefault={(name) =>
+          name === "WIDGET_API_URL"
+            ? widgetApiUrlDefault
+            : {
+                name,
+                secret: name === "LANGGRAPH_API_KEY",
+                source: "missing",
+                value: undefined,
+              }
+        }
+      />,
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("LANGGRAPH_API_KEY is missing");
+    expect(lastFrame()).toContain(".env.prod or .env");
+  });
+
+  it("keeps RAGFlow workspace creation supported in the setup flow", async () => {
+    const created: Array<Record<string, string | undefined>> = [];
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        loadWorkspaces={async () => []}
+        resolveDefault={(name) =>
+          name === "WIDGET_API_URL"
+            ? widgetApiUrlDefault
+            : {
+                name,
+                secret: name === "LANGGRAPH_API_KEY",
+                source: "missing",
+                value: undefined,
+              }
+        }
+        createWorkspace={async (values) => {
+          created.push(values);
+          return "ws_7";
+        }}
+      />,
+    );
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Provider base URL");
+    stdin.write("https://ragflow.example.com\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Provider agent ID");
+    stdin.write("agent_1\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Provider API key");
+    stdin.write("ragflow-secret\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Review workspace creation");
+    expect(lastFrame()).toContain("Provider: ragflow");
+    expect(lastFrame()).not.toContain("ragflow-secret");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(created).toMatchObject([
+      {
+        providerType: "ragflow",
+        baseUrl: "https://ragflow.example.com",
+        agentId: "agent_1",
+        apiKey: "ragflow-secret",
+        domains: "*",
+        authMode: "anonymous",
+      },
+    ]);
+    expect(lastFrame()).toContain("Choose embed type");
+  });
+
+  it("renders a grouped feature picker before command details", async () => {
+    const { lastFrame, stdin } = render(<TuiApp />);
+
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(lastFrame()).toContain("Agent Toolkit");
     expect(lastFrame()).toContain("Workspace");
@@ -17,6 +339,10 @@ describe("TuiApp", () => {
   it("selects list items with Enter", async () => {
     const { lastFrame, stdin } = render(<TuiApp />);
 
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write("\r");
     await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -26,9 +352,92 @@ describe("TuiApp", () => {
     expect(lastFrame()).toContain("Back to feature groups");
   });
 
+  it("selects provider type before workspace create details in Advanced commands", async () => {
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        resolveDefault={(name) => {
+          if (name === "LANGGRAPH_API_KEY") {
+            return {
+              name,
+              secret: true,
+              source: ".env.prod",
+              value: "lg-secret",
+            };
+          }
+          if (name === "LANGGRAPH_PORT") {
+            return { name, secret: false, source: ".env", value: "2026" };
+          }
+          return {
+            name,
+            secret: false,
+            source: "missing",
+            value: undefined,
+          };
+        }}
+      />,
+    );
+
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Provider type");
+    expect(lastFrame()).toContain("langgraph");
+    expect(lastFrame()).not.toContain("Workspace ID: required");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Review inputs");
+    expect(lastFrame()).not.toContain("Workspace ID: required");
+    expect(lastFrame()).toContain("Provider type: langgraph");
+    expect(lastFrame()).toContain("Provider agent ID: hr_assistant");
+    expect(lastFrame()).toContain("Provider API key: [hidden]");
+    expect(lastFrame()).toContain("Provider base URL: http://localhost:2026");
+    expect(lastFrame()).toContain("Source: LANGGRAPH_API_KEY from .env.prod");
+  });
+
+  it("prompts for RAGFlow provider details after selecting ragflow in Advanced workspace create", async () => {
+    const { lastFrame, stdin } = render(<TuiApp />);
+
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Provider type");
+    expect(lastFrame()).toContain("langgraph");
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Provider type");
+    expect(lastFrame()).toContain("ragflow");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Provider base URL");
+    expect(lastFrame()).not.toContain("Provider agent ID: hr_assistant");
+    expect(lastFrame()).not.toContain("Provider API key: [hidden]");
+  });
+
   it("uses single-key arrow navigation for list actions", async () => {
     const { lastFrame, stdin } = render(<TuiApp />);
 
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write("j");
     await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write("\u001b[C");
@@ -54,7 +463,7 @@ describe("TuiApp", () => {
       title: "Test Form",
       description: "Test Form",
       args: [
-        { name: "name", label: "Name", required: true },
+        { name: "name", label: "Name" },
         { name: "note", label: "Note" },
         { name: "tag", label: "Tag" },
       ],
@@ -67,8 +476,19 @@ describe("TuiApp", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write("\u001b[C");
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Review inputs");
+    expect(lastFrame()).toContain("Edit details");
+
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lastFrame()).toContain("Field 1/3");
+    expect(lastFrame()).toContain("Name");
+
     stdin.write("first");
     await new Promise((resolve) => setTimeout(resolve, 20));
+
     stdin.write("\u001b[B");
     await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write("memo");
@@ -198,6 +618,222 @@ describe("TuiApp", () => {
     expect(lastFrame()).toContain("ws_two:hello");
   });
 
+  it("uses smart defaults for advanced command API URL after workspace selection", async () => {
+    const command = {
+      id: "test.widget",
+      path: ["widget", "iframe"],
+      group: "widget",
+      title: "Test Widget",
+      description: "Test Widget",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [
+        {
+          name: "apiUrl",
+          label: "Public Agent Toolkit server URL",
+          required: true,
+          defaultSource: "operator:WIDGET_API_URL" as const,
+        },
+        { name: "title", label: "Widget title", advanced: true },
+      ],
+      runner: (
+        context: { stdout(message: string): void },
+        values: Record<string, string | boolean | undefined>,
+      ) => {
+        context.stdout(
+          `${String(values.workspaceId)}:${String(values.apiUrl)}`,
+        );
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+        ]}
+        resolveDefault={(name) =>
+          name === "WIDGET_API_URL"
+            ? widgetApiUrlDefault
+            : {
+                name,
+                secret: name === "LANGGRAPH_API_KEY",
+                source: "missing",
+                value: undefined,
+              }
+        }
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Review inputs");
+    expect(lastFrame()).toContain(
+      "Public Agent Toolkit server URL: https://api.example.com",
+    );
+    expect(lastFrame()).toContain("Source: WIDGET_API_URL from .env.prod");
+    expect(lastFrame()).not.toContain("Widget title");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("ws_one:https://api.example.com");
+  });
+
+  it("prompts once for missing smart default values before review", async () => {
+    const command = {
+      id: "test.widget",
+      path: ["widget", "iframe"],
+      group: "widget",
+      title: "Test Widget",
+      description: "Test Widget",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [
+        {
+          name: "apiUrl",
+          label: "Public Agent Toolkit server URL",
+          required: true,
+          defaultSource: "operator:WIDGET_API_URL" as const,
+        },
+      ],
+      runner: () => undefined,
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+        ]}
+        resolveDefault={(name) => ({
+          name,
+          secret: name === "LANGGRAPH_API_KEY",
+          source: "missing",
+          value: undefined,
+        })}
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Public Agent Toolkit server URL");
+    expect(lastFrame()).not.toContain("Review inputs");
+
+    stdin.write("https://manual.example.com\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Review inputs");
+    expect(lastFrame()).toContain(
+      "Public Agent Toolkit server URL: https://manual.example.com",
+    );
+    expect(lastFrame()).toContain("Source: manual");
+  });
+
+  it("lets details mode override a resolved API URL and widget appearance option", async () => {
+    const command = {
+      id: "test.widget",
+      path: ["widget", "iframe"],
+      group: "widget",
+      title: "Test Widget",
+      description: "Test Widget",
+      args: [{ name: "workspaceId", label: "Workspace ID", required: true }],
+      options: [
+        {
+          name: "apiUrl",
+          label: "Public Agent Toolkit server URL",
+          required: true,
+          defaultSource: "operator:WIDGET_API_URL" as const,
+        },
+        { name: "title", label: "Widget title", advanced: true },
+      ],
+      runner: (
+        context: { stdout(message: string): void },
+        values: Record<string, string | boolean | undefined>,
+      ) => {
+        context.stdout(`${String(values.apiUrl)}:${String(values.title)}`);
+      },
+    };
+    const { lastFrame, stdin } = render(
+      <TuiApp
+        commands={[command]}
+        loadWorkspaces={async () => [
+          {
+            id: "ws_one",
+            providerType: "ragflow",
+            authMode: "anonymous",
+            createdAt: "2026-05-11T00:00:00.000Z",
+          },
+        ]}
+        resolveDefault={(name) =>
+          name === "WIDGET_API_URL"
+            ? widgetApiUrlDefault
+            : {
+                name,
+                secret: name === "LANGGRAPH_API_KEY",
+                source: "missing",
+                value: undefined,
+              }
+        }
+      />,
+    );
+
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[C");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("Public Agent Toolkit server URL");
+    expect(lastFrame()).toContain("https://api.example.com");
+
+    stdin.write(
+      "\u007f".repeat("https://api.example.com".length) +
+        "https://override.example.com",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    stdin.write("Agent Desk\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain(
+      "Public Agent Toolkit server URL: https://override.example.com",
+    );
+    expect(lastFrame()).toContain("Widget title: Agent Desk");
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(lastFrame()).toContain("https://override.example.com:Agent Desk");
+  });
+
   it("reviews immediately after workspace selection when no other inputs exist", async () => {
     const command = {
       id: "test.workspace",
@@ -235,7 +871,7 @@ describe("TuiApp", () => {
     expect(lastFrame()).toContain("Workspace ID: ws_one");
     expect(lastFrame()).toContain("Run command");
     expect(lastFrame()).toContain("Change workspace");
-    expect(lastFrame()).not.toContain("Edit inputs");
+    expect(lastFrame()).not.toContain("Edit details");
     expect(lastFrame()).not.toContain("Workspace ID: required");
   });
 
@@ -317,14 +953,14 @@ describe("TuiApp", () => {
     expect(lastFrame()).toContain("ws_[31mred - ragflow / anonymous");
   });
 
-  it("exits form entry to the parent command list", async () => {
+  it("returns from review to the parent command list", async () => {
     const command = {
       id: "test.form",
       path: ["test", "form"],
       group: "test",
       title: "Test Form",
       description: "Test Form",
-      args: [{ name: "name", label: "Name", required: true }],
+      args: [],
       options: [],
       runner: () => undefined,
     };
@@ -334,14 +970,17 @@ describe("TuiApp", () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     stdin.write("\u001b[C");
     await new Promise((resolve) => setTimeout(resolve, 20));
-    stdin.write("draft");
+
+    expect(lastFrame()).toContain("Review inputs");
+
+    stdin.write("\u001b[B");
     await new Promise((resolve) => setTimeout(resolve, 20));
-    stdin.write("\u001b");
+    stdin.write("\r");
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(lastFrame()).toContain("Test");
     expect(lastFrame()).toContain("Test Form");
-    expect(lastFrame()).not.toContain("draft");
+    expect(lastFrame()).not.toContain("Review inputs");
   });
 
   it("shows result actions with retry first and back navigation", async () => {

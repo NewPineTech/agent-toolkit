@@ -8,10 +8,44 @@ import {
 } from "../command-registry.js";
 import type { CliContext } from "../context.js";
 import { createPool, listWorkspaceSummaries } from "../db.js";
+import {
+  resolveOperatorDefault,
+  formatOperatorDefaultForReview,
+  getLangGraphBaseUrlDefault,
+  type OperatorDefaultName,
+  type ResolvedOperatorDefault,
+} from "../operator-defaults.js";
+import { runGuidedWorkspaceCreate } from "../commands/workspace.js";
+import {
+  resolveCommandDefaults,
+  type ResolvedCommandDefaults,
+} from "./command-defaults.js";
 
 type Values = Record<string, string | boolean | undefined>;
 type RunOutcome = "success" | "error";
 type ListItem = { label: string; value: string };
+type AppMode = "operator-home" | "advanced-commands" | "setup-widget";
+type CommandInputMode = "smart" | "details";
+type SetupWidgetStep =
+  | "workspace"
+  | "embed"
+  | "review"
+  | "customize"
+  | "createProvider"
+  | "createReview";
+type SetupEmbedType = "iframe" | "script" | "snippet" | "preview";
+type SetupProviderType = "langgraph" | "ragflow";
+type GuidedWorkspaceValues = {
+  providerType?: string;
+  agentId?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  domains?: string;
+  authMode?: string;
+  maxRequests?: string;
+  windowMs?: string;
+  maxMessageLength?: string;
+};
 export interface WorkspaceChoice {
   id: string;
   providerType: string;
@@ -20,6 +54,13 @@ export interface WorkspaceChoice {
 }
 export type WorkspaceLoader = () => Promise<WorkspaceChoice[]>;
 export type ClipboardWriter = (value: string) => Promise<void>;
+export type OperatorDefaultResolver = (
+  name: OperatorDefaultName,
+) => ResolvedOperatorDefault;
+export type GuidedWorkspaceCreator = (
+  values: GuidedWorkspaceValues,
+  context: CliContext,
+) => Promise<string>;
 type ClipboardCommandRunner = (
   command: string,
   args: string[],
@@ -84,18 +125,49 @@ const groupOrder = [
   "features",
 ];
 
+const setupCustomizationFields: CommandField[] = [
+  { name: "title", label: "Widget title" },
+  { name: "subtitle", label: "Widget subtitle" },
+  { name: "placeholder", label: "Input placeholder" },
+  { name: "greeting", label: "Greeting text" },
+  { name: "suggestions", label: "Comma-separated suggestions" },
+  { name: "primaryColor", label: "Primary theme color" },
+  { name: "backgroundColor", label: "Background color" },
+  { name: "textColor", label: "Text color" },
+  {
+    name: "position",
+    label: "Widget position",
+    type: "select",
+    choices: ["bottom-right", "bottom-left"],
+  },
+  { name: "initialOpen", label: "Open panel on load", type: "boolean" },
+];
+
 export function TuiApp({
   commands = commandSpecs,
   loadWorkspaces = loadWorkspaceChoices,
   copyToClipboard = copyTextToClipboard,
+  resolveDefault = (name) => resolveOperatorDefault(name),
+  createWorkspace = (values, context) =>
+    runGuidedWorkspaceCreate(context, values),
 }: {
   commands?: CommandSpec[];
   loadWorkspaces?: WorkspaceLoader;
   copyToClipboard?: ClipboardWriter;
+  resolveDefault?: OperatorDefaultResolver;
+  createWorkspace?: GuidedWorkspaceCreator;
 }) {
   const { exit } = useApp();
+  const [mode, setMode] = useState<AppMode>(() =>
+    commands === commandSpecs ? "operator-home" : "advanced-commands",
+  );
   const [selectedGroup, setSelectedGroup] = useState<FeatureGroup>();
   const [selected, setSelected] = useState<CommandSpec>();
+  const [commandInputMode, setCommandInputMode] =
+    useState<CommandInputMode>("smart");
+  const [confirmedPromptFirstFields, setConfirmedPromptFirstFields] = useState<
+    string[]
+  >([]);
   const [fieldIndex, setFieldIndex] = useState(0);
   const [values, setValues] = useState<Values>({});
   const [output, setOutput] = useState("");
@@ -110,8 +182,46 @@ export function TuiApp({
   const [workspaceError, setWorkspaceError] = useState("");
   const [workspaceLoadAttempt, setWorkspaceLoadAttempt] = useState(0);
   const [copyStatus, setCopyStatus] = useState("");
+  const [setupStep, setSetupStep] = useState<SetupWidgetStep>("workspace");
+  const [setupWorkspace, setSetupWorkspace] = useState<WorkspaceChoice>();
+  const [setupEmbedType, setSetupEmbedType] =
+    useState<SetupEmbedType>("iframe");
+  const [setupApiUrl, setSetupApiUrl] = useState("");
+  const [setupApiUrlDraft, setSetupApiUrlDraft] = useState("");
+  const [setupProviderType, setSetupProviderType] =
+    useState<SetupProviderType>("langgraph");
+  const [setupCreateError, setSetupCreateError] = useState("");
+  const [setupCreateValues, setSetupCreateValues] = useState<Values>({});
+  const [setupCreateFieldIndex, setSetupCreateFieldIndex] = useState(0);
+  const [setupCustomizationValues, setSetupCustomizationValues] =
+    useState<Values>({});
+  const [setupCustomizationFieldIndex, setSetupCustomizationFieldIndex] =
+    useState(0);
+  const [setupOutputCopyable, setSetupOutputCopyable] = useState(false);
+  const widgetApiUrlDefault = resolveDefault("WIDGET_API_URL");
+  const langGraphApiKeyDefault = resolveDefault("LANGGRAPH_API_KEY");
+  const langGraphPortDefault = resolveDefault("LANGGRAPH_PORT");
   const fields = selected ? [...selected.args, ...selected.options] : [];
-  const field = fields[fieldIndex];
+  const resolvedInputs = selected
+    ? resolveCommandDefaults(selected, {
+        values,
+        resolveOperatorDefault: resolveDefault,
+      })
+    : undefined;
+  const promptFields = selected
+    ? getPromptFields(
+        selected,
+        values,
+        commandInputMode,
+        resolvedInputs,
+        confirmedPromptFirstFields,
+      )
+    : [];
+  const field = promptFields[fieldIndex];
+  const reviewValues = resolvedInputs?.values ?? values;
+  const fieldValue = field
+    ? (reviewValues[field.name] ?? values[field.name])
+    : undefined;
   const selectedWorkspaceId =
     typeof values["workspaceId"] === "string" ? values["workspaceId"] : "";
   const needsWorkspaceSelection = selected
@@ -122,7 +232,7 @@ export function TuiApp({
   const canChangeWorkspace =
     needsWorkspaceSelection && selectedWorkspaceId !== "";
   const hasEditableInputs = fields.some((candidate) =>
-    isEditableField(candidate, values),
+    isEditableField(candidate, reviewValues),
   );
 
   const groups = useMemo(() => buildFeatureGroups(commands), [commands]);
@@ -144,7 +254,11 @@ export function TuiApp({
   );
 
   useEffect(() => {
-    if (!selected || !needsWorkspaceSelection || selectedWorkspaceId !== "") {
+    const loadingForCommand =
+      selected && needsWorkspaceSelection && selectedWorkspaceId === "";
+    const loadingForSetup =
+      mode === "setup-widget" && setupStep === "workspace" && !setupWorkspace;
+    if (!loadingForCommand && !loadingForSetup) {
       return;
     }
 
@@ -172,11 +286,540 @@ export function TuiApp({
     };
   }, [
     loadWorkspaces,
+    mode,
     needsWorkspaceSelection,
     selected,
     selectedWorkspaceId,
+    setupStep,
+    setupWorkspace,
     workspaceLoadAttempt,
   ]);
+
+  if (mode === "operator-home") {
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Header title="Agent Toolkit" subtitle="Choose an operator task." />
+        <ShortcutList
+          items={[
+            {
+              label:
+                "Setup widget - Select a workspace and generate embed code",
+              value: "setup-widget",
+            },
+            {
+              label: "Advanced commands - Browse every CLI command",
+              value: "advanced",
+            },
+          ]}
+          onSelect={(item) => {
+            if (item.value === "setup-widget") {
+              resetSetupState();
+              setMode("setup-widget");
+              return;
+            }
+            setMode("advanced-commands");
+          }}
+          onQuit={exit}
+        />
+      </Box>
+    );
+  }
+
+  if (mode === "setup-widget") {
+    if (running) {
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Generating widget output" />
+          <Text color="yellow">Running...</Text>
+          <Text>{sanitizeTerminalOutput(output)}</Text>
+        </Box>
+      );
+    }
+
+    if (completed) {
+      const canCopyOutput =
+        setupOutputCopyable && outcome === "success" && output.length > 0;
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Widget output" />
+          <Text color={outcome === "success" ? "green" : "red"}>
+            {outcome === "success" ? "Completed" : "Failed"}
+          </Text>
+          <Text>{sanitizeTerminalOutput(output) || "(No output)"}</Text>
+          {copyStatus ? (
+            <Text
+              color={copyStatus === "Copied to clipboard." ? "green" : "red"}
+            >
+              {sanitizeTerminalOutput(copyStatus)}
+            </Text>
+          ) : null}
+          <ShortcutList
+            items={[
+              ...(canCopyOutput
+                ? [{ label: "Copy output to clipboard", value: "copy" }]
+                : []),
+              { label: "Test widget access", value: "test" },
+              { label: "Generate another format", value: "format" },
+              { label: "Run another task", value: "home" },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "copy") {
+                void copyOutput();
+                return;
+              }
+              if (item.value === "format") {
+                setCompleted(false);
+                setOutput("");
+                setCopyStatus("");
+                setSetupStep("embed");
+                return;
+              }
+              if (item.value === "test") {
+                runSetupWidgetCommand("test");
+                return;
+              }
+              resetToHome();
+            }}
+            onBack={() => {
+              setCompleted(false);
+              setOutput("");
+              setCopyStatus("");
+              setSetupStep("review");
+            }}
+            onQuit={exit}
+          />
+        </Box>
+      );
+    }
+
+    if (setupStep === "workspace") {
+      const workspaceItems = workspaceChoices.map((workspace) => ({
+        label: `${renderTerminalText(workspace.id)} - ${renderTerminalText(workspace.providerType)} / ${renderTerminalText(workspace.authMode)} - ${renderTerminalText(workspace.createdAt)}`,
+        value: workspace.id,
+      }));
+
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Select workspace" />
+          {loadingWorkspaces ? (
+            <Text color="yellow">Loading workspaces...</Text>
+          ) : workspaceError ? (
+            <>
+              <Text color="red">{sanitizeTerminalOutput(workspaceError)}</Text>
+              <ShortcutList
+                items={[
+                  { label: "Retry loading workspaces", value: "retry" },
+                  { label: "Back to operator tasks", value: "back" },
+                ]}
+                onSelect={(item) => {
+                  if (item.value === "retry") {
+                    setWorkspaceLoadAttempt((current) => current + 1);
+                    return;
+                  }
+                  resetToHome();
+                }}
+                onBack={resetToHome}
+                onQuit={exit}
+              />
+            </>
+          ) : workspaceItems.length === 0 ? (
+            <>
+              <Text color="gray">No workspaces found.</Text>
+              <ShortcutList
+                items={[
+                  { label: "Create new workspace", value: "create" },
+                  { label: "Back to operator tasks", value: "back" },
+                ]}
+                onSelect={(item) => {
+                  if (item.value === "back") {
+                    resetToHome();
+                    return;
+                  }
+                  setSetupStep("createProvider");
+                }}
+                onBack={resetToHome}
+                onQuit={exit}
+              />
+            </>
+          ) : (
+            <ShortcutList
+              items={[
+                ...workspaceItems,
+                { label: "Create new workspace", value: "__create" },
+                { label: "Back to operator tasks", value: "__back" },
+              ]}
+              onSelect={(item) => {
+                if (item.value === "__back") {
+                  resetToHome();
+                  return;
+                }
+                if (item.value === "__create") {
+                  setSetupStep("createProvider");
+                  return;
+                }
+                const workspace = workspaceChoices.find(
+                  (candidate) => candidate.id === item.value,
+                );
+                if (!workspace) return;
+                setSetupWorkspace(workspace);
+                setSetupApiUrl(widgetApiUrlDefault.value ?? "");
+                setSetupStep("embed");
+              }}
+              onBack={resetToHome}
+              onQuit={exit}
+            />
+          )}
+        </Box>
+      );
+    }
+
+    if (setupStep === "createProvider") {
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Choose provider type" />
+          <ShortcutList
+            items={[
+              {
+                label: "langgraph - First-party Agentic runtime",
+                value: "langgraph",
+              },
+              { label: "ragflow - RAGFlow agent workspace", value: "ragflow" },
+            ]}
+            onSelect={(item) => {
+              setSetupProviderType(item.value as SetupProviderType);
+              setSetupCreateError("");
+              setSetupCreateValues({});
+              setSetupCreateFieldIndex(0);
+              setSetupStep("createReview");
+            }}
+            onBack={() => setSetupStep("workspace")}
+            onQuit={exit}
+          />
+        </Box>
+      );
+    }
+
+    if (setupStep === "createReview") {
+      const langGraphBaseUrl = getLangGraphBaseUrlDefault({
+        port: langGraphPortDefault,
+      });
+      const ragflowFields: CommandField[] = [
+        { name: "baseUrl", label: "Provider base URL", required: true },
+        { name: "agentId", label: "Provider agent ID", required: true },
+        {
+          name: "apiKey",
+          label: "Provider API key",
+          required: true,
+          secret: true,
+          type: "password",
+        },
+      ];
+      const ragflowField = ragflowFields[setupCreateFieldIndex];
+      const ragflowValuesComplete = ragflowFields.every((field) => {
+        const value = setupCreateValues[field.name];
+        return typeof value === "string" && value.trim().length > 0;
+      });
+      const langGraphValues: GuidedWorkspaceValues = {
+        providerType: "langgraph",
+        agentId: "hr_assistant",
+        apiKey: langGraphApiKeyDefault.value,
+        baseUrl: langGraphBaseUrl.value,
+        domains: "*",
+        authMode: "anonymous",
+        maxRequests: "30",
+        windowMs: "60000",
+        maxMessageLength: "4000",
+      };
+      const missingLangGraphKey =
+        setupProviderType === "langgraph" && !langGraphApiKeyDefault.value;
+
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Review workspace creation" />
+          {setupCreateError ? (
+            <Text color="red">{sanitizeTerminalOutput(setupCreateError)}</Text>
+          ) : null}
+          {setupProviderType === "langgraph" ? (
+            <Box flexDirection="column" marginY={1}>
+              <Text>Workspace ID: auto-generated ws_${"{number}"}</Text>
+              <Text>Provider: langgraph</Text>
+              <Text>
+                Base URL: {renderTerminalText(langGraphBaseUrl.value)}
+              </Text>
+              <Text>Agent ID: hr_assistant</Text>
+              <Text>
+                {formatOperatorDefaultForReview(langGraphApiKeyDefault)}
+              </Text>
+              <Text>Allowed domains: *</Text>
+              <Text>Auth mode: anonymous</Text>
+            </Box>
+          ) : (
+            <Box flexDirection="column" marginY={1}>
+              <Text>Workspace ID: auto-generated ws_${"{number}"}</Text>
+              <Text>Provider: ragflow</Text>
+              {ragflowValuesComplete ? (
+                <>
+                  <Text>
+                    Base URL:{" "}
+                    {renderTerminalText(String(setupCreateValues.baseUrl))}
+                  </Text>
+                  <Text>
+                    Agent ID:{" "}
+                    {renderTerminalText(String(setupCreateValues.agentId))}
+                  </Text>
+                  <Text>Provider API key: [hidden]</Text>
+                  <Text>Allowed domains: *</Text>
+                  <Text>Auth mode: anonymous</Text>
+                </>
+              ) : null}
+            </Box>
+          )}
+          {setupProviderType === "ragflow" &&
+          !ragflowValuesComplete &&
+          ragflowField ? (
+            <FieldPrompt
+              field={ragflowField}
+              value={setupCreateValues[ragflowField.name]}
+              onChange={(value) =>
+                setSetupCreateValues((current) => ({
+                  ...current,
+                  [ragflowField.name]: value,
+                }))
+              }
+              onPreviousField={() =>
+                setSetupCreateFieldIndex((current) => Math.max(0, current - 1))
+              }
+              onNextField={() =>
+                setSetupCreateFieldIndex((current) =>
+                  Math.min(ragflowFields.length - 1, current + 1),
+                )
+              }
+              onExit={() => setSetupStep("createProvider")}
+              onReview={(value) => {
+                const nextValues = {
+                  ...setupCreateValues,
+                  [ragflowField.name]: value,
+                };
+                setSetupCreateValues(nextValues);
+                const nextMissingIndex = ragflowFields.findIndex((field) => {
+                  const nextValue = nextValues[field.name];
+                  return (
+                    typeof nextValue !== "string" ||
+                    nextValue.trim().length === 0
+                  );
+                });
+                if (nextMissingIndex !== -1) {
+                  setSetupCreateFieldIndex(nextMissingIndex);
+                }
+              }}
+            />
+          ) : missingLangGraphKey ? (
+            <>
+              <Text color="red">
+                LANGGRAPH_API_KEY is missing. Add it to .env.prod or .env, then
+                retry.
+              </Text>
+              <ShortcutList
+                items={[
+                  { label: "Change provider type", value: "provider" },
+                  { label: "Back to workspace list", value: "workspace" },
+                ]}
+                onSelect={(item) => {
+                  if (item.value === "provider") {
+                    setSetupStep("createProvider");
+                    return;
+                  }
+                  setSetupStep("workspace");
+                }}
+                onBack={() => setSetupStep("createProvider")}
+                onQuit={exit}
+              />
+            </>
+          ) : (
+            <ShortcutList
+              items={[
+                { label: "Create workspace", value: "create" },
+                { label: "Change provider type", value: "provider" },
+                { label: "Back to workspace list", value: "workspace" },
+              ]}
+              onSelect={(item) => {
+                if (item.value === "provider") {
+                  setSetupStep("createProvider");
+                  return;
+                }
+                if (item.value === "workspace") {
+                  setSetupStep("workspace");
+                  return;
+                }
+                if (setupProviderType === "langgraph") {
+                  void createSetupWorkspace(langGraphValues);
+                  return;
+                }
+                void createSetupWorkspace({
+                  providerType: "ragflow",
+                  baseUrl: String(setupCreateValues.baseUrl),
+                  agentId: String(setupCreateValues.agentId),
+                  apiKey: String(setupCreateValues.apiKey),
+                  domains: "*",
+                  authMode: "anonymous",
+                  maxRequests: "30",
+                  windowMs: "60000",
+                  maxMessageLength: "4000",
+                });
+              }}
+              onBack={() => setSetupStep("createProvider")}
+              onQuit={exit}
+            />
+          )}
+        </Box>
+      );
+    }
+
+    if (setupStep === "embed") {
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Choose embed type" />
+          <ShortcutList
+            items={[
+              { label: "iframe - Plain iframe tag", value: "iframe" },
+              { label: "script - Script tag embed", value: "script" },
+              {
+                label: "snippet - Full iframe + resize snippet",
+                value: "snippet",
+              },
+              { label: "preview - Preview URL", value: "preview" },
+            ]}
+            onSelect={(item) => {
+              setSetupEmbedType(item.value as SetupEmbedType);
+              setSetupStep("review");
+            }}
+            onBack={() => setSetupStep("workspace")}
+            onQuit={exit}
+          />
+        </Box>
+      );
+    }
+
+    if (setupStep === "customize") {
+      const customizationField =
+        setupCustomizationFields[setupCustomizationFieldIndex] ??
+        setupCustomizationFields[0]!;
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <Header title="Setup widget" subtitle="Customize appearance" />
+          <Text color="gray">
+            Field {setupCustomizationFieldIndex + 1}/
+            {setupCustomizationFields.length}
+          </Text>
+          <CustomizationSummary values={setupCustomizationValues} />
+          <FieldPrompt
+            field={customizationField}
+            value={setupCustomizationValues[customizationField.name]}
+            onChange={(value) =>
+              setSetupCustomizationValues((current) => ({
+                ...current,
+                [customizationField.name]: value,
+              }))
+            }
+            onPreviousField={() =>
+              setSetupCustomizationFieldIndex((current) =>
+                Math.max(0, current - 1),
+              )
+            }
+            onNextField={() =>
+              setSetupCustomizationFieldIndex((current) =>
+                Math.min(setupCustomizationFields.length - 1, current + 1),
+              )
+            }
+            onExit={() => setSetupStep("review")}
+            onReview={(value) => {
+              setSetupCustomizationValues((current) => ({
+                ...current,
+                [customizationField.name]: value,
+              }));
+              if (
+                setupCustomizationFieldIndex <
+                setupCustomizationFields.length - 1
+              ) {
+                setSetupCustomizationFieldIndex((current) => current + 1);
+                return;
+              }
+              setSetupStep("review");
+            }}
+          />
+          <Text color="gray">Esc returns to review.</Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Header title="Setup widget" subtitle="Review widget setup" />
+        <Box flexDirection="column" marginY={1}>
+          <Text>Workspace: {renderTerminalText(setupWorkspace?.id ?? "")}</Text>
+          <Text>Embed type: {setupEmbedType}</Text>
+          <Text>
+            Widget API URL:{" "}
+            {setupApiUrl ? renderTerminalText(setupApiUrl) : "(missing)"}
+          </Text>
+          <Text>Source: {widgetApiUrlDefault.source}</Text>
+          <CustomizationSummary values={setupCustomizationValues} />
+        </Box>
+        {!setupApiUrl ? (
+          <TextFieldPrompt
+            field={{
+              name: "apiUrl",
+              label: "Public Agent Toolkit server URL",
+              required: true,
+            }}
+            value={setupApiUrlDraft}
+            onChange={setSetupApiUrlDraft}
+            onPreviousField={() => undefined}
+            onNextField={() => undefined}
+            onExit={() => setSetupStep("embed")}
+            onReview={(value) => {
+              if (typeof value === "string" && value.trim()) {
+                setSetupApiUrl(value.trim());
+              }
+            }}
+          />
+        ) : (
+          <ShortcutList
+            items={[
+              { label: "Generate embed", value: "generate" },
+              { label: "Change workspace", value: "workspace" },
+              { label: "Change embed type", value: "embed" },
+              { label: "Change API URL", value: "api" },
+              { label: "Customize appearance", value: "customize" },
+            ]}
+            onSelect={(item) => {
+              if (item.value === "workspace") {
+                resetSetupState();
+                return;
+              }
+              if (item.value === "embed") {
+                setSetupStep("embed");
+                return;
+              }
+              if (item.value === "api") {
+                setSetupApiUrl("");
+                setSetupApiUrlDraft(widgetApiUrlDefault.value ?? "");
+                return;
+              }
+              if (item.value === "customize") {
+                setSetupCustomizationFieldIndex(0);
+                setSetupStep("customize");
+                return;
+              }
+              runSetupWidgetCommand(setupEmbedType);
+            }}
+            onBack={() => setSetupStep("embed")}
+            onQuit={exit}
+          />
+        )}
+      </Box>
+    );
+  }
 
   if (!selectedGroup) {
     return (
@@ -191,6 +834,7 @@ export function TuiApp({
             setSelectedGroup(groups.find((group) => group.id === item.value));
             resetCommandState();
           }}
+          onBack={resetToHome}
           onQuit={exit}
         />
       </Box>
@@ -324,12 +968,12 @@ export function TuiApp({
               setOutcome("success");
               setCopyStatus("");
               if (selected.destructive) {
-                setFieldIndex(fields.length);
+                setFieldIndex(promptFields.length);
                 return;
               }
               void runSelected(
                 selected,
-                values,
+                reviewValues,
                 setRunning,
                 setOutput,
                 setCompleted,
@@ -350,7 +994,7 @@ export function TuiApp({
     return (
       <Box flexDirection="column" paddingX={1}>
         <Header title={selected.path.join(" ")} subtitle="Review inputs" />
-        <CommandSummary command={selected} values={values} />
+        <CommandSummary reviewItems={resolvedInputs?.reviewItems ?? []} />
         {selected.destructive ? (
           <>
             <Text color="red">This command changes or deletes data.</Text>
@@ -361,7 +1005,7 @@ export function TuiApp({
                   ? [{ label: "Change workspace", value: "workspace" }]
                   : []),
                 ...(hasEditableInputs
-                  ? [{ label: "Edit inputs", value: "edit" }]
+                  ? [{ label: "Edit details", value: "edit" }]
                   : []),
                 { label: "Cancel", value: "cancel" },
               ]}
@@ -371,7 +1015,7 @@ export function TuiApp({
                   return;
                 }
                 if (item.value === "edit") {
-                  returnToEditableInputs();
+                  enterDetailsMode();
                   return;
                 }
                 if (item.value === "workspace") {
@@ -380,7 +1024,7 @@ export function TuiApp({
                 }
                 void runSelected(
                   selected,
-                  values,
+                  reviewValues,
                   setRunning,
                   setOutput,
                   setCompleted,
@@ -399,7 +1043,7 @@ export function TuiApp({
                 ? [{ label: "Change workspace", value: "workspace" }]
                 : []),
               ...(hasEditableInputs
-                ? [{ label: "Edit inputs", value: "edit" }]
+                ? [{ label: "Edit details", value: "edit" }]
                 : []),
               { label: "Back to command list", value: "back" },
             ]}
@@ -409,7 +1053,7 @@ export function TuiApp({
                 return;
               }
               if (item.value === "edit") {
-                returnToEditableInputs();
+                enterDetailsMode();
                 return;
               }
               if (item.value === "workspace") {
@@ -418,7 +1062,7 @@ export function TuiApp({
               }
               void runSelected(
                 selected,
-                values,
+                reviewValues,
                 setRunning,
                 setOutput,
                 setCompleted,
@@ -437,16 +1081,22 @@ export function TuiApp({
     <Box flexDirection="column" paddingX={1}>
       <Header title={selected.path.join(" ")} subtitle={selected.title} />
       <Text color="gray">
-        Field {fieldIndex + 1}/{fields.length}
+        Field {fieldIndex + 1}/{promptFields.length}
       </Text>
       {error ? <Text color="red">{error}</Text> : null}
       <FieldPrompt
         field={field}
-        value={values[field.name]}
+        value={fieldValue}
         onChange={(value) => updateFieldValue(field, value)}
         onPreviousField={goToPreviousField}
         onNextField={goToNextField}
-        onExit={resetCommandState}
+        onExit={() => {
+          if (commandInputMode === "details") {
+            setFieldIndex(promptFields.length);
+            return;
+          }
+          resetCommandState();
+        }}
         onReview={(value) => reviewInputs({ name: field.name, value })}
       />
     </Box>
@@ -458,8 +1108,18 @@ export function TuiApp({
     resetCommandState();
   }
 
+  function resetToHome() {
+    setMode("operator-home");
+    setSelectedGroup(undefined);
+    setSelected(undefined);
+    resetCommandState();
+    resetSetupState();
+  }
+
   function resetCommandState() {
     setSelected(undefined);
+    setCommandInputMode("smart");
+    setConfirmedPromptFirstFields([]);
     setFieldIndex(0);
     setValues({});
     setOutput("");
@@ -473,15 +1133,93 @@ export function TuiApp({
     setWorkspaceError("");
   }
 
+  function resetSetupState() {
+    setSetupStep("workspace");
+    setSetupWorkspace(undefined);
+    setSetupEmbedType("iframe");
+    setSetupApiUrl("");
+    setSetupApiUrlDraft("");
+    setSetupProviderType("langgraph");
+    setSetupCreateError("");
+    setSetupCreateValues({});
+    setSetupCreateFieldIndex(0);
+    setSetupCustomizationValues({});
+    setSetupCustomizationFieldIndex(0);
+    setWorkspaceChoices([]);
+    setLoadingWorkspaces(false);
+    setWorkspaceError("");
+    setOutput("");
+    setCompleted(false);
+    setRunning(false);
+    setOutcome("success");
+    setCopyStatus("");
+    setSetupOutputCopyable(false);
+  }
+
+  function runSetupWidgetCommand(type: SetupEmbedType | "test") {
+    const commandId = type === "test" ? "widget.test" : `widget.${type}`;
+    const command = commands.find((candidate) => candidate.id === commandId);
+    if (!command || !setupWorkspace || !setupApiUrl) return;
+    setOutput("");
+    setCompleted(false);
+    setCopyStatus("");
+    setSetupOutputCopyable(type !== "test");
+    void runSelected(
+      command,
+      {
+        workspaceId: setupWorkspace.id,
+        apiUrl: setupApiUrl,
+        ...setupCustomizationValues,
+      },
+      setRunning,
+      setOutput,
+      setCompleted,
+      setOutcome,
+    );
+  }
+
+  async function createSetupWorkspace(values: GuidedWorkspaceValues) {
+    setSetupCreateError("");
+    const context: CliContext = {
+      stdout: () => undefined,
+      stderr: () => undefined,
+    };
+    try {
+      const workspaceId = await createWorkspace(values, context);
+      setSetupWorkspace({
+        id: workspaceId,
+        providerType: values.providerType ?? setupProviderType,
+        authMode: values.authMode ?? "anonymous",
+        createdAt: new Date().toISOString(),
+      });
+      setSetupApiUrl(widgetApiUrlDefault.value ?? "");
+      setSetupStep("embed");
+    } catch (error) {
+      setSetupCreateError(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   function goToPreviousField() {
-    const nextIndex = findEditableFieldIndex(fields, fieldIndex, -1, values);
+    const nextIndex = findEditableFieldIndex(
+      promptFields,
+      fieldIndex,
+      -1,
+      values,
+    );
     if (nextIndex === -1) return;
     setError("");
     setFieldIndex(nextIndex);
   }
 
   function goToNextField() {
-    const nextIndex = findEditableFieldIndex(fields, fieldIndex, 1, values);
+    const nextIndex = findEditableFieldIndex(
+      promptFields,
+      fieldIndex,
+      1,
+      values,
+    );
     if (nextIndex === -1) return;
     setError("");
     setFieldIndex(nextIndex);
@@ -493,23 +1231,60 @@ export function TuiApp({
   }
 
   function returnToEditableInputs() {
-    const nextIndex = findEditableFieldIndex(fields, -1, 1, values);
+    const nextIndex = findEditableFieldIndex(promptFields, -1, 1, values);
     if (nextIndex === -1) return false;
     setFieldIndex(nextIndex);
     return true;
+  }
+
+  function enterDetailsMode() {
+    if (!selected) return;
+    const detailFields = getPromptFields(
+      selected,
+      reviewValues,
+      "details",
+      resolvedInputs,
+    );
+    const nextIndex = findEditableFieldIndex(detailFields, -1, 1, reviewValues);
+    if (nextIndex === -1) return;
+    setCommandInputMode("details");
+    setValues(reviewValues);
+    setError("");
+    setFieldIndex(nextIndex);
   }
 
   function selectWorkspace(workspaceId: string) {
     const nextValues = { ...values, workspaceId };
     setError("");
     setValues(nextValues);
-    const nextIndex = findEditableFieldIndex(fields, -1, 1, nextValues);
-    setFieldIndex(nextIndex === -1 ? fields.length : nextIndex);
+    setCommandInputMode("smart");
+    setConfirmedPromptFirstFields([]);
+    const nextPromptFields = selected
+      ? getPromptFields(
+          selected,
+          nextValues,
+          "smart",
+          resolveCommandDefaults(selected, {
+            values: nextValues,
+            resolveOperatorDefault: resolveDefault,
+          }),
+          [],
+        )
+      : [];
+    const nextIndex = findEditableFieldIndex(
+      nextPromptFields,
+      -1,
+      1,
+      nextValues,
+    );
+    setFieldIndex(nextIndex === -1 ? nextPromptFields.length : nextIndex);
   }
 
   function changeWorkspace() {
     setError("");
     setFieldIndex(0);
+    setCommandInputMode("smart");
+    setConfirmedPromptFirstFields([]);
     setValues((current) => ({
       ...current,
       workspaceId: undefined,
@@ -547,20 +1322,45 @@ export function TuiApp({
       nextValues[currentDraft.name] = currentDraft.value;
     }
 
-    for (const [index, candidate] of fields.entries()) {
-      const value = normalizeFieldValue(candidate, nextValues[candidate.name]);
-      nextValues[candidate.name] = value;
-      if (candidate.required && (value === "" || value === undefined)) {
-        setValues(nextValues);
-        setFieldIndex(index);
-        setError(`${candidate.label} is required.`);
-        return;
-      }
+    if (!selected) return;
+    const currentField = currentDraft
+      ? fields.find((candidate) => candidate.name === currentDraft.name)
+      : undefined;
+    const nextConfirmedPromptFirstFields =
+      currentField?.promptFirst && currentDraft
+        ? Array.from(
+            new Set([...confirmedPromptFirstFields, currentDraft.name]),
+          )
+        : confirmedPromptFirstFields;
+    const nextResolved = resolveCommandDefaults(selected, {
+      values: nextValues,
+      resolveOperatorDefault: resolveDefault,
+    });
+    const missingField = nextResolved.missingRequiredFields.find((candidate) =>
+      isEditableField(candidate, nextResolved.values),
+    );
+    if (missingField) {
+      const nextPromptFields = getPromptFields(
+        selected,
+        nextResolved.values,
+        commandInputMode,
+        nextResolved,
+        nextConfirmedPromptFirstFields,
+      );
+      const nextIndex = nextPromptFields.findIndex(
+        (candidate) => candidate.name === missingField.name,
+      );
+      setValues(nextValues);
+      setConfirmedPromptFirstFields(nextConfirmedPromptFirstFields);
+      setFieldIndex(nextIndex === -1 ? 0 : nextIndex);
+      setError(`${missingField.label} is required.`);
+      return;
     }
 
     setError("");
     setValues(nextValues);
-    setFieldIndex(fields.length);
+    setConfirmedPromptFirstFields(nextConfirmedPromptFirstFields);
+    setFieldIndex(promptFields.length);
   }
 }
 
@@ -814,33 +1614,81 @@ function findEditableFieldIndex(
   return -1;
 }
 
-function CommandSummary({
-  command,
-  values,
-}: {
-  command: CommandSpec;
-  values: Values;
-}) {
+function getPromptFields(
+  command: CommandSpec,
+  values: Values,
+  mode: CommandInputMode,
+  resolvedInputs: ResolvedCommandDefaults | undefined,
+  confirmedPromptFirstFields: string[] = [],
+) {
   const fields = [...command.args, ...command.options];
-  if (fields.length === 0) {
+  if (mode === "details") {
+    return fields.filter((field) => isEditableField(field, values));
+  }
+
+  const promptFirstFields = fields.filter(
+    (field) =>
+      field.promptFirst &&
+      !confirmedPromptFirstFields.includes(field.name) &&
+      isEditableField(field, values),
+  );
+  if (promptFirstFields.length > 0) return promptFirstFields;
+
+  return (resolvedInputs?.missingRequiredFields ?? []).filter((field) =>
+    isEditableField(field, resolvedInputs?.values ?? values),
+  );
+}
+
+function CommandSummary({
+  reviewItems,
+}: {
+  reviewItems: ResolvedCommandDefaults["reviewItems"];
+}) {
+  if (reviewItems.length === 0) {
     return <Text color="gray">No inputs required.</Text>;
   }
+  const visibleItems = reviewItems.filter(
+    (item) => !(item.advanced && item.missing),
+  );
 
   return (
     <Box flexDirection="column" marginY={1}>
       <Text color="gray">Inputs</Text>
-      {fields.map((field) => {
-        const value = values[field.name];
-        const renderedValue =
-          value === undefined || value === ""
-            ? "(not set)"
-            : renderTerminalText(String(value));
+      {visibleItems.map((item) => {
         return (
-          <Text key={field.name}>
-            {field.label}: {field.secret ? "[hidden]" : renderedValue}
-          </Text>
+          <Box key={item.name} flexDirection="column">
+            <Text>
+              {item.label}:{" "}
+              {item.secret ? item.value : renderTerminalText(item.value)}
+            </Text>
+            {item.sourceLabel !== "missing" ? (
+              <Text color="gray">Source: {item.sourceLabel}</Text>
+            ) : null}
+          </Box>
         );
       })}
+    </Box>
+  );
+}
+
+function CustomizationSummary({ values }: { values: Values }) {
+  const configuredFields = setupCustomizationFields.filter((field) => {
+    const value = values[field.name];
+    return value !== undefined && value !== "";
+  });
+
+  if (configuredFields.length === 0) {
+    return <Text color="gray">Appearance: default</Text>;
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Text color="gray">Appearance</Text>
+      {configuredFields.map((field) => (
+        <Text key={field.name}>
+          {field.label}: {renderTerminalText(String(values[field.name] ?? ""))}
+        </Text>
+      ))}
     </Box>
   );
 }
@@ -1100,14 +1948,6 @@ function moveChoice(
       : 0;
   const nextIndex = moveIndex(currentIndex, delta, choices.length);
   return choices[nextIndex];
-}
-
-function normalizeFieldValue(
-  field: CommandField,
-  value: string | boolean | undefined,
-) {
-  if (value === "" || value === undefined) return field.defaultValue;
-  return value;
 }
 
 async function runSelected(

@@ -26,6 +26,7 @@ import {
   runWidgetTest,
 } from "./commands/widget.js";
 import {
+  runGuidedWorkspaceCreate,
   runWorkspaceCreate,
   runWorkspaceDelete,
   runWorkspaceGet,
@@ -40,6 +41,11 @@ import type { CliContext } from "./context.js";
 
 export type CommandFieldType = "text" | "password" | "boolean" | "select";
 export type CommandValues = Record<string, string | boolean | undefined>;
+export type CommandFieldDefaultSource =
+  | "operator:WIDGET_API_URL"
+  | "operator:LANGGRAPH_API_KEY"
+  | "operator:LANGGRAPH_BASE_URL"
+  | "literal:LANGGRAPH_AGENT_ID";
 
 export interface CommandField {
   name: string;
@@ -48,6 +54,11 @@ export interface CommandField {
   required?: boolean;
   secret?: boolean;
   defaultValue?: string | boolean;
+  defaultSource?: CommandFieldDefaultSource;
+  defaultWhen?: { field: string; value: string | boolean };
+  promptFirst?: boolean;
+  advanced?: boolean;
+  reviewLabel?: string;
   choices?: string[];
 }
 
@@ -68,22 +79,38 @@ const workspaceId = field("workspaceId", "Workspace ID", { required: true });
 const sessionId = field("sessionId", "Session ID", { required: true });
 const apiUrl = field("apiUrl", "Public Agent Toolkit server URL", {
   required: true,
+  defaultSource: "operator:WIDGET_API_URL",
 });
-const origin = field("origin", "Origin header");
+const origin = field("origin", "Origin header", { advanced: true });
 const dates = [
-  field("from", "Start date YYYY-MM-DD"),
-  field("to", "End date YYYY-MM-DD"),
+  field("from", "Start date YYYY-MM-DD", { advanced: true }),
+  field("to", "End date YYYY-MM-DD", { advanced: true }),
 ];
 const workspaceOptions = [
-  field("agentId", "Provider agent ID", { required: true }),
+  field("providerType", "Provider type", {
+    type: "select",
+    choices: ["langgraph", "ragflow"],
+    defaultValue: "langgraph",
+    promptFirst: true,
+  }),
+  field("baseUrl", "Provider base URL", {
+    required: true,
+    defaultSource: "operator:LANGGRAPH_BASE_URL",
+    defaultWhen: { field: "providerType", value: "langgraph" },
+  }),
+  field("agentId", "Provider agent ID", {
+    required: true,
+    defaultSource: "literal:LANGGRAPH_AGENT_ID",
+    defaultWhen: { field: "providerType", value: "langgraph" },
+  }),
   field("apiKey", "Provider API key", {
     type: "password",
     required: true,
     secret: true,
+    defaultSource: "operator:LANGGRAPH_API_KEY",
+    defaultWhen: { field: "providerType", value: "langgraph" },
   }),
-  field("baseUrl", "Provider base URL", { required: true }),
-  field("providerType", "Provider type", { defaultValue: "ragflow" }),
-  field("domains", "Comma-separated allowed origins"),
+  field("domains", "Comma-separated allowed origins", { defaultValue: "*" }),
   field("authMode", "Auth mode", {
     type: "select",
     choices: ["anonymous", "authenticated", "both"],
@@ -92,6 +119,7 @@ const workspaceOptions = [
   field("authSecret", "Customer HMAC secret", {
     type: "password",
     secret: true,
+    advanced: true,
   }),
   field("maxRequests", "Rate-limit max requests", { defaultValue: "30" }),
   field("windowMs", "Rate-limit window in ms", { defaultValue: "60000" }),
@@ -103,23 +131,28 @@ const workspaceUpdateOptions = workspaceOptions.map(
   ({ defaultValue: _defaultValue, ...item }) => ({
     ...item,
     required: false,
+    advanced: true,
   }),
 );
 const embedOptions = [
   apiUrl,
-  field("title", "Widget title"),
-  field("subtitle", "Widget subtitle"),
-  field("placeholder", "Input placeholder"),
-  field("greeting", "Greeting text"),
-  field("suggestions", "Comma-separated suggestions"),
-  field("primaryColor", "Primary theme color"),
-  field("backgroundColor", "Background color"),
-  field("textColor", "Text color"),
+  field("title", "Widget title", { advanced: true }),
+  field("subtitle", "Widget subtitle", { advanced: true }),
+  field("placeholder", "Input placeholder", { advanced: true }),
+  field("greeting", "Greeting text", { advanced: true }),
+  field("suggestions", "Comma-separated suggestions", { advanced: true }),
+  field("primaryColor", "Primary theme color", { advanced: true }),
+  field("backgroundColor", "Background color", { advanced: true }),
+  field("textColor", "Text color", { advanced: true }),
   field("position", "Widget position", {
     type: "select",
     choices: ["bottom-right", "bottom-left"],
+    advanced: true,
   }),
-  field("initialOpen", "Open panel on load", { type: "boolean" }),
+  field("initialOpen", "Open panel on load", {
+    type: "boolean",
+    advanced: true,
+  }),
 ];
 
 export const commandSpecs: CommandSpec[] = [
@@ -137,9 +170,16 @@ export const commandSpecs: CommandSpec[] = [
     ["workspace", "create"],
     "workspace",
     "Create or update a workspace",
-    [field("id", "Workspace ID", { required: true })],
-    workspaceOptions,
-    (ctx, v) => runWorkspaceCreate(ctx, v),
+    [],
+    [field("id", "Workspace ID", { advanced: true }), ...workspaceOptions],
+    async (ctx, v) => {
+      const options = workspaceCreateValues(v);
+      if (options.id) {
+        await runWorkspaceCreate(ctx, options);
+        return;
+      }
+      await runGuidedWorkspaceCreate(ctx, options);
+    },
   ),
   spec(
     "workspace.list",
@@ -525,6 +565,28 @@ function requireApiUrl(
   values: CommandValues,
 ): CommandValues & { apiUrl: string } {
   return { ...values, apiUrl: String(values.apiUrl) };
+}
+
+function stringValue(value: CommandValues[string]): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function workspaceCreateValues(values: CommandValues) {
+  return {
+    id: stringValue(values.id),
+    providerType: stringValue(values.providerType),
+    agentId: stringValue(values.agentId),
+    apiKey: stringValue(values.apiKey),
+    baseUrl: stringValue(values.baseUrl),
+    domains: stringValue(values.domains),
+    authMode: stringValue(values.authMode),
+    authSecret: stringValue(values.authSecret),
+    maxRequests: stringValue(values.maxRequests),
+    windowMs: stringValue(values.windowMs),
+    maxMessageLength: stringValue(values.maxMessageLength),
+  };
 }
 
 function spec(

@@ -48,6 +48,20 @@ generate_secret() {
   openssl rand -hex 32 2>/dev/null || head -c 64 /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | head -c 64
 }
 
+set_env_value() {
+  local file="$1" key="$2" value="$3" escaped
+  escaped=$(printf '%s' "$value" | sed 's/[|&]/\\&/g')
+  if grep -q "^$key=" "$file"; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|^$key=.*|$key=$escaped|" "$file"
+    else
+      sed -i "s|^$key=.*|$key=$escaped|" "$file"
+    fi
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$file"
+  fi
+}
+
 # ── Configuration ───────────────────────────────────────────────────
 REPO_URL="https://github.com/NewPineTech/agent-toolkit.git"
 INSTALL_DIR="${AGENT_TOOLKIT_DIR:-agent-toolkit}"
@@ -169,8 +183,9 @@ if [ ! -f "$ENV_FILE" ]; then
     sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$POSTGRES_PASSWORD|" "$ENV_FILE"
     sed -i "s|^PORT=.*|PORT=$SERVER_PORT|" "$ENV_FILE"
   fi
+  set_env_value "$ENV_FILE" WIDGET_API_URL "$WIDGET_API_URL"
 
-  ok "Generated $ENV_FILE with random secrets (PORT=$SERVER_PORT)"
+  ok "Generated $ENV_FILE with random secrets (PORT=$SERVER_PORT, WIDGET_API_URL=${WIDGET_API_URL:-empty})"
 else
   ok "$ENV_FILE already exists — skipping secret generation"
   # Still update port if user changed it
@@ -179,7 +194,8 @@ else
   else
     sed -i "s|^PORT=.*|PORT=$SERVER_PORT|" "$ENV_FILE"
   fi
-  ok "Updated PORT=$SERVER_PORT in $ENV_FILE"
+  set_env_value "$ENV_FILE" WIDGET_API_URL "$WIDGET_API_URL"
+  ok "Updated PORT=$SERVER_PORT and WIDGET_API_URL=${WIDGET_API_URL:-empty} in $ENV_FILE"
 fi
 echo ""
 

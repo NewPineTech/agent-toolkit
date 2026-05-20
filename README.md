@@ -675,7 +675,7 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk w
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk workspace get ws_acme_001
 ```
 
-For an interactive full-screen terminal UI that covers the same end-user commands, run:
+For an interactive full-screen terminal UI that starts with operator tasks, run:
 
 ```bash
 atk tui
@@ -687,7 +687,26 @@ In the production Docker image:
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk tui
 ```
 
-The TUI starts with feature groups such as workspace, widget, chat, usage, sessions, ingest, and validation, then shows the commands inside the selected group. List screens use `↑`/`↓` to move, `Enter` or `→` to select, `←` to go back, and `q` to quit. Form fields keep draft values while users switch with `↑`/`↓`, use `Enter` to review inputs, and use `Esc` to leave the form and return to the parent command list. Secret fields are hidden while confirming inputs, destructive actions require confirmation, and users can run another command without restarting the app.
+The TUI opens with **Setup widget** for the common operator path: select an
+existing workspace, choose an embed format, review the Widget API URL, generate
+the embed code, and copy it to the clipboard. `WIDGET_API_URL` is reused from
+the shell environment, `.env.prod`, or `.env`, so operators do not have to enter
+the same server URL every time. If no workspace exists, the flow can create a
+LangGraph workspace using `LANGGRAPH_API_KEY` from those same defaults, or a
+RAGFlow workspace from the provider values entered in the flow.
+
+Use **Advanced commands** in the TUI to browse the full CLI command catalog:
+workspace, widget, chat, usage, sessions, ingest, validation, and features.
+Advanced commands use smart defaults by default: workspace-scoped commands
+start with workspace selection, widget and chat commands reuse `WIDGET_API_URL`
+from the shell environment, `.env.prod`, or `.env`, and the default path prompts
+only for missing required values. The review screen shows where resolved values
+came from. Use **Edit details** from review when you need the full command
+surface, including optional filters, widget appearance fields, and overrides for
+resolved defaults. List screens use `↑`/`↓` to move, `Enter` or `→` to select,
+`←` to go back, and `q` to quit. Secret fields are hidden while confirming
+inputs, destructive actions require confirmation, and users can run another
+command without restarting the app.
 
 ### Widget CLI
 

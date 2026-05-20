@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { loadCliEnvDefaults } from "./cli-env.js";
 import { runChatAsk, runChatSessionCreate } from "./commands/chat.js";
 import { runConfigValidate } from "./commands/config.js";
 import { runDomainTest } from "./commands/domain.js";
@@ -48,6 +49,8 @@ export interface CliProgramOptions {
 }
 
 export function createCliProgram(options: CliProgramOptions = {}): Command {
+  loadCliEnvDefaults();
+
   const context: CliContext = {
     stdout: options.stdout ?? ((message) => process.stdout.write(message)),
     stderr: options.stderr ?? ((message) => process.stderr.write(message)),

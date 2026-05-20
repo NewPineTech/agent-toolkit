@@ -4,6 +4,7 @@ import {
   createPool,
   encryptSecret,
   findWorkspace,
+  getNextGeneratedWorkspaceId,
   listWorkspaceSummaries,
   parseDomains,
   parsePositiveInteger,
@@ -25,23 +26,14 @@ interface WorkspaceOptions {
   maxMessageLength?: string;
 }
 
+const GUIDED_WORKSPACE_CREATE_RETRY_LIMIT = 5;
+
 export async function runWorkspaceCreate(
   context: CliContext,
   options: WorkspaceOptions,
 ) {
   await withPool(createPool, async (pool) => {
-    const maxRequests = parsePositiveInteger(options.maxRequests, 30)!;
-    const windowMs = parsePositiveInteger(options.windowMs, 60000)!;
-    const maxMessageLength = parsePositiveInteger(
-      options.maxMessageLength,
-      4000,
-    )!;
-    const encryptedApiKey = encryptSecret(
-      requiredOption(options.apiKey, "apiKey"),
-    );
-    const encryptedAuthSecret = options.authSecret
-      ? encryptSecret(options.authSecret)
-      : null;
+    const workspaceId = requiredOption(options.id, "id");
     await pool.query(
       `insert into workspaces (
         id, provider_type, provider_agent_id, provider_api_key, provider_base_url,
@@ -58,20 +50,43 @@ export async function runWorkspaceCreate(
         rate_limit_config = excluded.rate_limit_config,
         max_message_length = excluded.max_message_length,
         updated_at = now()`,
-      [
-        requiredOption(options.id, "id"),
-        options.providerType ?? "ragflow",
-        requiredOption(options.agentId, "agentId"),
-        encryptedApiKey,
-        requiredOption(options.baseUrl, "baseUrl"),
-        parseDomains(options.domains),
-        options.authMode ?? "anonymous",
-        encryptedAuthSecret,
-        JSON.stringify({ maxRequests, windowMs }),
-        maxMessageLength,
-      ],
+      buildWorkspaceInsertValues(workspaceId, options),
     );
     writeLine(context, `Workspace "${options.id}" saved.`);
+  });
+}
+
+export async function runGuidedWorkspaceCreate(
+  context: CliContext,
+  options: Omit<WorkspaceOptions, "id">,
+): Promise<string> {
+  return withPool(createPool, async (pool) => {
+    for (
+      let attempt = 1;
+      attempt <= GUIDED_WORKSPACE_CREATE_RETRY_LIMIT;
+      attempt += 1
+    ) {
+      const workspaceId = await getNextGeneratedWorkspaceId(pool);
+      try {
+        await pool.query(
+          `insert into workspaces (
+            id, provider_type, provider_agent_id, provider_api_key, provider_base_url,
+            allowed_domains, auth_mode, auth_secret, rate_limit_config, max_message_length, updated_at
+          ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now())`,
+          buildWorkspaceInsertValues(workspaceId, options),
+        );
+        writeLine(context, `Workspace "${workspaceId}" saved.`);
+        return workspaceId;
+      } catch (error) {
+        if (!isWorkspaceIdConflict(error)) throw error;
+        if (attempt === GUIDED_WORKSPACE_CREATE_RETRY_LIMIT) {
+          throw new Error(
+            "Could not create a workspace after 5 generated ID attempts. Choose a manual workspace ID and try again.",
+          );
+        }
+      }
+    }
+    throw new Error("Workspace creation retry loop exited unexpectedly");
   });
 }
 
@@ -227,6 +242,43 @@ function redactWorkspace(workspace: WorkspaceRow) {
     provider_api_key: "[encrypted]",
     auth_secret: workspace.auth_secret ? "[encrypted]" : null,
   };
+}
+
+function buildWorkspaceInsertValues(
+  workspaceId: string,
+  options: Omit<WorkspaceOptions, "id">,
+) {
+  const maxRequests = parsePositiveInteger(options.maxRequests, 30)!;
+  const windowMs = parsePositiveInteger(options.windowMs, 60000)!;
+  const maxMessageLength = parsePositiveInteger(
+    options.maxMessageLength,
+    4000,
+  )!;
+  const encryptedApiKey = encryptSecret(
+    requiredOption(options.apiKey, "apiKey"),
+  );
+  const encryptedAuthSecret = options.authSecret
+    ? encryptSecret(options.authSecret)
+    : null;
+
+  return [
+    workspaceId,
+    options.providerType ?? "ragflow",
+    requiredOption(options.agentId, "agentId"),
+    encryptedApiKey,
+    requiredOption(options.baseUrl, "baseUrl"),
+    parseDomains(options.domains),
+    options.authMode ?? "anonymous",
+    encryptedAuthSecret,
+    JSON.stringify({ maxRequests, windowMs }),
+    maxMessageLength,
+  ];
+}
+
+function isWorkspaceIdConflict(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = "code" in error ? error.code : undefined;
+  return code === "23505" || /duplicate|conflict/i.test(error.message);
 }
 
 function formatDate(value: Date) {
