@@ -1,6 +1,18 @@
 # Agent Toolkit
 
-A production-grade toolkit for embedding provider-backed chat widgets into web applications. Provider API keys never leave the server — all communication is proxied through a secure backend.
+Production-ready infrastructure for shipping secure AI chat inside real web
+products. Agent Toolkit combines a React/iframe chat widget, Fastify backend,
+multi-tenant workspace security, RAGFlow provider support, and a first-party
+LangGraph HR agent runtime.
+
+Provider API keys never leave the server. Browser clients receive short-lived
+session tokens, and all model/provider traffic is proxied through your own
+backend.
+
+[![Node.js >=22](https://img.shields.io/badge/node-%3E%3D22-339933)](package.json)
+[![pnpm >=9](https://img.shields.io/badge/pnpm-%3E%3D9-F69220)](package.json)
+[![TypeScript](https://img.shields.io/badge/typescript-5.x-3178C6)](packages)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED)](docker-compose.yml)
 
 ```
 [Browser Widget]                    [Your Backend (BFF)]               [Provider Runtime]
@@ -11,11 +23,38 @@ A production-grade toolkit for embedding provider-backed chat widgets into web a
 
 ## Why Agent Toolkit
 
-- Secure embeddable chat: browsers only receive short-lived session tokens, never provider API keys.
-- Provider adapter model: route workspaces to RAGFlow today and LangGraph-based runtimes when the assistant needs agentic workflows.
-- Production backend included: Fastify, PostgreSQL, Redis, encrypted workspace secrets, rate limiting, origin allowlists, and SSE streaming.
-- Multiple integration paths: React component, headless hook, iframe snippet, script tag, and CLI-generated embed markup.
-- Operator tooling: workspace management, chat smoke tests, usage reporting, session inspection, TUI flows, Docker deployment, and HR knowledge-base ingestion.
+- **Secure embeddable chat**: browsers only receive short-lived session tokens,
+  never provider API keys.
+- **Provider adapter model**: route workspaces to RAGFlow today and
+  LangGraph-based runtimes when the assistant needs agentic workflows.
+- **Production backend included**: Fastify, PostgreSQL, Redis, encrypted
+  workspace secrets, rate limiting, origin allowlists, and SSE streaming.
+- **Multiple integration paths**: React component, headless hook, iframe
+  snippet, script tag, and CLI-generated embed markup.
+- **Operator tooling**: workspace management, chat smoke tests, usage reporting,
+  session inspection, TUI flows, Docker deployment, and HR knowledge-base
+  ingestion.
+
+## What You Can Build
+
+- A customer-support or internal-knowledge chat widget embedded in any SaaS app.
+- Multi-tenant assistant workspaces with separate providers, allowed domains,
+  rate limits, and auth modes.
+- A private RAGFlow assistant where the browser never talks directly to RAGFlow.
+- A LangGraph-backed HR assistant that keeps the same widget/session/security
+  layer as the RAG provider path.
+- A self-hosted AI chat stack with Docker, database migrations, CLI operations,
+  and production health checks.
+
+## Why Star This Repo
+
+Star the repo if you want a practical reference for:
+
+- Building secure AI widgets without leaking provider credentials.
+- Designing a backend-for-frontend around streaming AI providers.
+- Combining RAGFlow retrieval with LangGraph agent workflows.
+- Shipping reusable React, iframe, and script-tag embeds from one codebase.
+- Operating a TypeScript AI product with Postgres, Redis, Docker, and tests.
 
 ## Use Cases
 
@@ -867,6 +906,20 @@ The hook tracks a cursor position via `useRef` and advances it by `charsPerTick`
 - [x] Error sanitization (raw provider errors never forwarded to client)
 - [x] Request correlation IDs on all responses
 - [x] Non-root Docker container with health checks
+
+## Community
+
+Contributions are welcome where they strengthen the production path: provider
+adapters, widget integrations, CLI ergonomics, deployment guides, tests,
+observability, and Agentic workflow quality.
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Use the GitHub issue templates for reproducible bugs and focused feature
+  proposals.
+- For vulnerabilities or credential-exposure concerns, follow
+  [SECURITY.md](SECURITY.md) instead of opening a public issue.
+- If this repo helps you design a secure AI embed stack, star it so other teams
+  can find it.
 
 ## License
 
