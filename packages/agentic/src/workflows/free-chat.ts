@@ -1,6 +1,10 @@
 import { AGENTIC_INTENTS } from "../constants.js";
 import { loadPrompt } from "../prompt-loader.js";
-import { AgenticStateAnnotation, type AgenticState } from "../state.js";
+import {
+  AgenticStateAnnotation,
+  createEmptyAgenticEvidence,
+  type AgenticState,
+} from "../state.js";
 import { buildFreeChatContext } from "../tools/free-chat.js";
 import { generateModelResponse } from "../model.js";
 import { buildMemoryContext } from "../memory.js";
@@ -39,6 +43,7 @@ async function freeChatNode(state: AgenticState) {
         intent: AGENTIC_INTENTS.freeChat,
         answer: response.content,
         warnings,
+        evidence: createEmptyAgenticEvidence(),
       },
     ],
     warnings,

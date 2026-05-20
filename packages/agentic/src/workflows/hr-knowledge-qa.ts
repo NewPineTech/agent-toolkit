@@ -1,7 +1,11 @@
 import { END, START, StateGraph } from "@langchain/langgraph";
 import { AGENTIC_INTENTS } from "../constants.js";
 import { loadPrompt } from "../prompt-loader.js";
-import { AgenticStateAnnotation, type AgenticState } from "../state.js";
+import {
+  AgenticStateAnnotation,
+  createAgenticEvidenceFromDocuments,
+  type AgenticState,
+} from "../state.js";
 import { answerHrKnowledgeQuestion } from "../tools/hr-knowledge.js";
 import { generateModelResponse } from "../model.js";
 import { buildMemoryContext } from "../memory.js";
@@ -45,6 +49,15 @@ async function hrKnowledgeQaNode(state: AgenticState) {
         intent: AGENTIC_INTENTS.hrKnowledgeQa,
         answer: response.content,
         warnings,
+        evidence:
+          result.evidence ??
+          createAgenticEvidenceFromDocuments(result.documents, {
+            toolName: "hr_knowledge_retriever",
+            capabilityId: "hr_knowledge.retrieve_documents",
+            warningCodes: result.warnings,
+            missingEvidenceReason:
+              "No HR knowledge documents were retrieved for this question.",
+          }),
       },
     ],
     warnings,

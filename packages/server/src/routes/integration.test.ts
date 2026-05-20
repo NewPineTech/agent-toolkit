@@ -21,6 +21,12 @@ import {
 import type { SessionStore } from "../interfaces/session-store.interface.js";
 import type { UsageTracker } from "../interfaces/usage-tracker.interface.js";
 import type {
+  AgenticRunAuditEventRecord,
+  AgenticRunAuditRunRecord,
+  AgenticRunAuditStore,
+  AgenticToolCallAuditRecord,
+} from "../admin/agentic-run-audit.recorder.js";
+import type {
   ChatProvider,
   ChatProviderConfig,
 } from "../interfaces/chat-provider.interface.js";
@@ -78,6 +84,32 @@ class InMemoryUsageTracker implements UsageTracker {
   }
 }
 
+class InMemoryAgenticRunAuditStore implements AgenticRunAuditStore {
+  runs: AgenticRunAuditRunRecord[] = [];
+  events: AgenticRunAuditEventRecord[] = [];
+  toolCalls: AgenticToolCallAuditRecord[] = [];
+
+  async createRun(record: AgenticRunAuditRunRecord) {
+    this.runs.push(record);
+  }
+  async appendEvent(record: AgenticRunAuditEventRecord) {
+    this.events.push(record);
+  }
+  async appendToolCall(record: AgenticToolCallAuditRecord) {
+    this.toolCalls.push(record);
+  }
+  async completeRun(record: AgenticRunAuditRunRecord) {
+    this.runs = this.runs.map((run) =>
+      run.runId === record.runId ? record : run,
+    );
+  }
+  async failRun(record: AgenticRunAuditRunRecord) {
+    this.runs = this.runs.map((run) =>
+      run.runId === record.runId ? record : run,
+    );
+  }
+}
+
 class MockChatProvider implements ChatProvider {
   async createSession() {
     return "rf_mock_sess";
@@ -130,6 +162,7 @@ async function buildTestApp() {
   const sessionStore = new InMemorySessionStore();
   const sessionCache = new InMemorySessionCache();
   const usageTracker = new InMemoryUsageTracker();
+  const agenticRunAuditStore = new InMemoryAgenticRunAuditStore();
 
   const mockChatProvider = new MockChatProvider();
   const chatProviderFactory = {
@@ -156,6 +189,7 @@ async function buildTestApp() {
     sessionStore: asValue(sessionStore as any),
     sessionCache: asValue(sessionCache as any),
     usageTracker: asValue(usageTracker as any),
+    agenticRunAuditStore: asValue(agenticRunAuditStore as any),
     rateLimiter: asValue(new InMemoryRateLimiter() as any),
     workspaceCache: asValue(new MockWorkspaceCache() as any),
     logger: asValue(logger),
@@ -193,19 +227,27 @@ async function buildTestApp() {
   await app.register(widgetRoutes, { db: mockDb });
   await app.register(healthRoutes, { healthChecker: mockHealthChecker });
 
-  return { app, sessionStore, usageTracker, mockHealthChecker };
+  return {
+    app,
+    sessionStore,
+    usageTracker,
+    agenticRunAuditStore,
+    mockHealthChecker,
+  };
 }
 
 describe("Integration: Widget Routes", () => {
   let app: FastifyInstance;
   let sessionStore: InMemorySessionStore;
   let usageTracker: InMemoryUsageTracker;
+  let agenticRunAuditStore: InMemoryAgenticRunAuditStore;
 
   beforeAll(async () => {
     const harness = await buildTestApp();
     app = harness.app;
     sessionStore = harness.sessionStore;
     usageTracker = harness.usageTracker;
+    agenticRunAuditStore = harness.agenticRunAuditStore;
     await app.ready();
   });
 
@@ -301,6 +343,67 @@ describe("Integration: Widget Routes", () => {
     it("tracks usage after chat", () => {
       expect(usageTracker.records.length).toBeGreaterThan(0);
       expect(usageTracker.records[0]!.workspaceId).toBe("ws_test");
+    });
+
+    it("persists agentic run audit records for LangGraph-backed widget chat", async () => {
+      const previousProviderType = testWorkspace.providerType;
+      testWorkspace.providerType = ProviderType.LANGGRAPH;
+      try {
+        const langGraphSessionRes = await app.inject({
+          method: "POST",
+          url: "/widget/session",
+          headers: { origin: "https://example.com" },
+          payload: { workspaceId: "ws_test" },
+        });
+        const {
+          token,
+          sessionId: langGraphSessionId,
+        }: { token: string; sessionId: string } = JSON.parse(
+          langGraphSessionRes.body,
+        );
+
+        const res = await app.inject({
+          method: "POST",
+          url: "/widget/chat",
+          headers: { authorization: `Bearer ${token}` },
+          payload: {
+            message: "Audit this LangGraph run",
+            sessionId: langGraphSessionId,
+          },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(agenticRunAuditStore.runs).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              threadId: "rf_mock_sess",
+              workspaceId: "ws_test",
+              status: "success",
+            }),
+          ]),
+        );
+        expect(agenticRunAuditStore.events).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              eventType: "run_started",
+              nodeName: "chat",
+            }),
+            expect.objectContaining({
+              logicalStep: "final_answer",
+              nodeName: "langgraph.agentic",
+              status: "completed",
+            }),
+          ]),
+        );
+        const finishedRun = agenticRunAuditStore.runs.find(
+          (run) => run.threadId === "rf_mock_sess",
+        );
+        expect(JSON.stringify(finishedRun?.stateDelta?.value)).toContain(
+          "Hello from RAGFlow",
+        );
+      } finally {
+        testWorkspace.providerType = previousProviderType;
+      }
     });
 
     it("rejects missing auth header", async () => {

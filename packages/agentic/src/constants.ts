@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const AGENTIC_MODEL_PROVIDER_TYPES = {
   googleVertexAI: "google_vertexai",
 } as const;
@@ -38,6 +40,22 @@ export const AGENTIC_MCP_RUNTIME_TARGETS = {
   docker: "docker",
 } as const;
 
+export const AGENTIC_MCP_TOOL_CAPABILITIES = {
+  read: "read",
+  write: "write",
+  action: "action",
+} as const;
+
+export const AGENTIC_MCP_APPROVAL_POLICIES = {
+  never: "never",
+  always: "always",
+} as const;
+
+const EmptyMcpArgumentsSchema = z.object({}).strict();
+const UserGuideSlugSchema = z.string().min(1).max(160);
+const UserGuideHeadingSchema = z.string().min(1).max(240);
+const UserGuideSearchQuerySchema = z.string().min(1).max(1000);
+
 export const AGENTIC_MCP_REGISTRY = {
   aiRecruitment: {
     id: "ai-recruitment",
@@ -62,28 +80,58 @@ export const AGENTIC_MCP_REGISTRY = {
         title: "List AI Recruitment Platform guide pages",
         description:
           "List available AI Recruitment Platform guide pages with headings and citations.",
+        capability: AGENTIC_MCP_TOOL_CAPABILITIES.read,
+        approvalPolicy: AGENTIC_MCP_APPROVAL_POLICIES.never,
         readOnly: true,
+        argumentsSchema: EmptyMcpArgumentsSchema,
+        redactedArgumentKeys: [],
       },
       getUserGuidePage: {
         name: "get_user_guide_page",
         title: "Get AI Recruitment Platform guide page",
         description:
           "Return the complete markdown body for one AI Recruitment Platform guide page by slug.",
+        capability: AGENTIC_MCP_TOOL_CAPABILITIES.read,
+        approvalPolicy: AGENTIC_MCP_APPROVAL_POLICIES.never,
         readOnly: true,
+        argumentsSchema: z
+          .object({
+            slug: UserGuideSlugSchema,
+          })
+          .strict(),
+        redactedArgumentKeys: [],
       },
       searchUserGuide: {
         name: "search_user_guide",
         title: "Search AI Recruitment Platform guide",
         description:
           "Search the Vietnamese AI Recruitment Platform guide and return section-level results with citations.",
+        capability: AGENTIC_MCP_TOOL_CAPABILITIES.read,
+        approvalPolicy: AGENTIC_MCP_APPROVAL_POLICIES.never,
         readOnly: true,
+        argumentsSchema: z
+          .object({
+            query: UserGuideSearchQuerySchema,
+            limit: z.number().int().min(1).max(10),
+          })
+          .strict(),
+        redactedArgumentKeys: [],
       },
       getUserGuideSection: {
         name: "get_user_guide_section",
         title: "Get AI Recruitment Platform guide section",
         description:
           "Return one section from an AI Recruitment Platform guide page by slug and heading.",
+        capability: AGENTIC_MCP_TOOL_CAPABILITIES.read,
+        approvalPolicy: AGENTIC_MCP_APPROVAL_POLICIES.never,
         readOnly: true,
+        argumentsSchema: z
+          .object({
+            slug: UserGuideSlugSchema,
+            heading: UserGuideHeadingSchema,
+          })
+          .strict(),
+        redactedArgumentKeys: [],
       },
     },
   },

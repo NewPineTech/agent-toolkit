@@ -158,6 +158,25 @@ describe("intent tools", () => {
           }),
           { status: 200 },
         ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              chunks: [
+                {
+                  id: "process-full",
+                  document_keyword: "QT tuyen dung",
+                  content_with_weight:
+                    "Bước 1: Đề xuất tuyển dụng. Bước 2: Phê duyệt. Bước 3: Đăng tuyển.",
+                  similarity: 0.84,
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
       );
 
     const result = await answerHrKnowledgeQuestion(
@@ -170,8 +189,9 @@ describe("intent tools", () => {
     );
 
     expect(result.answer).toContain("QT tuyen dung");
+    expect(result.answer).toContain("Bước 3");
     expect(result.answer).toContain("NS-02-BM05");
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(
       JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string),
     ).toMatchObject({
@@ -183,6 +203,12 @@ describe("intent tools", () => {
     ).toMatchObject({
       dataset_ids: ["3ba5a7ef3e0211f1bc59ae4b075ab570"],
       page_size: 3,
+    });
+    expect(
+      JSON.parse(fetchImpl.mock.calls[2]![1]!.body as string),
+    ).toMatchObject({
+      dataset_ids: ["3c0ab6d83e0211f19f78ae4b075ab570"],
+      page_size: 32,
     });
   });
 
@@ -242,13 +268,73 @@ describe("intent tools", () => {
       JSON.parse(fetchImpl.mock.calls[1]![1]!.body as string),
     ).toMatchObject({
       dataset_ids: ["3c0ab6d83e0211f19f78ae4b075ab570"],
-      page_size: 16,
+      page_size: 32,
     });
+  });
+
+  it("returns retrieval context instead of a hardcoded natural answer when process steps remain incomplete", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              chunks: [
+                {
+                  id: "process-partial",
+                  document_keyword: "QT tuyen dung",
+                  content_with_weight:
+                    "Tổng số bước: 7. Bước 1: Đề xuất tuyển dụng. Bước 2: Phê duyệt nhu cầu.",
+                  similarity: 0.86,
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              chunks: [
+                {
+                  id: "process-partial-again",
+                  document_keyword: "QT tuyen dung",
+                  content_with_weight:
+                    "Tổng số bước: 7. Bước 1: Đề xuất tuyển dụng. Bước 2: Phê duyệt nhu cầu.",
+                  similarity: 0.86,
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await answerHrKnowledgeQuestion(
+      "Quy trình tuyển dụng gồm các bước nào?",
+      {
+        baseUrl: "https://ragflow.test",
+        env: { RAGFLOW_API_KEY: "ragflow-secret" },
+        fetchImpl,
+      },
+    );
+
+    expect(result.blocked).toBe(true);
+    expect(result.answer).toBe("");
+    expect(result.retrievedContext).toBe("");
+    expect(result.documents.map((document) => document.title)).toContain(
+      "QT tuyen dung",
+    );
   });
 
   it("answers with recruitment context", async () => {
     const result = await answerRecruitmentQuestion("candidate interview");
     expect(result.answer).toContain("Candidate Screening");
+    expect(result.documents[0]?.title).toBe("Candidate Screening");
   });
 
   it("answers recruitment questions with ai-recruitment MCP context when configured", async () => {
@@ -264,6 +350,7 @@ describe("intent tools", () => {
     expect(result.answer).toContain(
       "Recruiters can search candidates by name or email",
     );
+    expect(result.documents[0]?.title).toBe("AI Recruitment MCP");
     expect(result.warnings).toEqual([]);
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe(
       AGENTIC_MCP_REGISTRY.aiRecruitment.runtimeTargets.local.endpointUrl,

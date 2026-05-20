@@ -125,24 +125,63 @@ search limit, maximum content length, allowed read-only guide tools, and usage
 mode. Do not add URL, timeout, or result-limit overrides to `.env`; changing
 those values is a source-controlled domain configuration change.
 
-The current MCP usage mode is `retrieval_context`. The graph performs a
-deterministic read-only lookup before model generation: initialize the
-Streamable HTTP MCP session through the official MCP TypeScript SDK, verify the
-required `search_user_guide` retrieval tool through `tools/list`, call that
-tool, mark returned content as untrusted retrieved context, emit sanitized audit
-metadata, and fall back to local recruitment notes on failure. The registry also
-allowlists the other read-only guide tools (`list_user_guide_pages`,
-`get_user_guide_page`, and `get_user_guide_section`) for future deterministic
-guide lookups. A LangGraph tool-loop mode should be introduced only when the
-model needs to choose among multiple MCP tools or perform action-like
-operations; that should use a graph node/tool loop with explicit allowlists,
-audit logging, and approval boundaries.
+The current MCP usage mode is `retrieval_context`, implemented with a hybrid
+plan-and-gate pattern. The graph performs a read-only lookup before model
+generation by creating a code-owned MCP action plan, validating it against
+`AGENTIC_MCP_REGISTRY`, initializing the Streamable HTTP MCP session through the
+official MCP TypeScript SDK, verifying the selected tool through `tools/list`,
+calling the authorized tool, marking returned content as untrusted retrieved
+context, emitting sanitized audit metadata, and falling back to local
+recruitment notes on failure. The deterministic guide planner can choose the
+current read-only guide tools: `list_user_guide_pages`, `search_user_guide`,
+`get_user_guide_page`, and `get_user_guide_section`.
+
+Future write/action MCP tools must be added to the registry with
+capability/approval metadata. A model may propose a structured MCP action plan,
+but code must authorize it before execution. Read-only tools can execute
+automatically; write/action tools must route through a LangGraph approval node
+using `interrupt()` and resume only after approve/edit/reject handling is wired.
 
 Non-secret graph topology, prompt files, retriever defaults, and memory defaults
 live in source under `packages/agentic`. Prompt assets are Markdown files under
 `packages/agentic/src/prompts/` and are copied into `dist` during
 `pnpm --filter @agent-toolkit/agentic run build`; prompt behavior should be
 covered by prompt-loader, router, or workflow tests.
+
+## Capability Planner Readiness Gates
+
+The Agentic runtime uses one assistant-level capability registry, grouped by
+intent. Capabilities stay inside this HR assistant domain; this is not a
+multi-domain plugin platform.
+
+Suggest a `ToolNode` adapter when these conditions are true:
+
+- Read-only capabilities have stable Zod input/output schemas.
+- Capability execution already records structured evidence and tool-call audit
+  rows.
+- Golden evals cover tool choice, fallback behavior, missing evidence, and
+  verifier regressions.
+- The adapter can be introduced as `AgenticCapability -> StructuredTool ->
+ToolNode` without changing widget streaming or memory behavior.
+
+Do not route write/action MCP tools through `ToolNode` until the explicit
+approval/resume HTTP contract is designed and implemented.
+
+Suggest a Model-first planner only when deterministic rules become too brittle
+for the active tool surface and all of these gates are met:
+
+- Capability registry and schemas are stable.
+- Tool budgets, timeouts, and denial behavior are code-owned.
+- Verifier hard gates prevent unsupported, empty, or incomplete evidence from
+  reaching answer generation.
+- Golden evals show stable tool-choice quality for both HR Knowledge and
+  Recruitment guide queries.
+- Observability can distinguish planned, executed, skipped, failed, and repaired
+  capability calls.
+
+Until those gates are met, keep the current deterministic-first planner.
+Ambiguous recruitment guide requests stay on safe search and mark model
+assistance as useful later instead of executing model-selected multi-step plans.
 
 ## Verification
 

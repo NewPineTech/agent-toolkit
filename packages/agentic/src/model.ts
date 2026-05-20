@@ -131,7 +131,7 @@ function buildVertexModelOptions(
 
 function buildDeterministicResponse(prompt: string): string {
   const normalized = prompt.trim().replace(/\s+/g, " ");
-  if (!normalized) return "Em chua nhan duoc noi dung can xu ly.";
+  if (!normalized) return "";
   return normalized.length > 700
     ? `${normalized.slice(0, 697)}...`
     : normalized;

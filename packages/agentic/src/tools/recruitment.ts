@@ -2,12 +2,14 @@ import {
   retrieveRecruitmentContext,
   type RecruitmentRetrieverOptions,
 } from "../retrievers/recruitment.js";
+import type { RetrievedDocument } from "../retrievers/hr-docs.js";
 
 export async function answerRecruitmentQuestion(
   query: string,
   options: RecruitmentRetrieverOptions = {},
 ): Promise<{
   answer: string;
+  documents: RetrievedDocument[];
   warnings: string[];
 }> {
   try {
@@ -16,8 +18,8 @@ export async function answerRecruitmentQuestion(
 
     if (documents.length === 0) {
       return {
-        answer:
-          "Em chua tim thay du lieu tuyen dung phu hop trong nguon hien tai.",
+        answer: "",
+        documents,
         warnings: [...result.warnings, "RECRUITMENT_RETRIEVER_EMPTY"],
       };
     }
@@ -26,6 +28,7 @@ export async function answerRecruitmentQuestion(
       answer: documents
         .map((document) => `${document.title}: ${document.content}`)
         .join("\n"),
+      documents,
       warnings: result.warnings,
     };
   } catch (error) {
@@ -34,7 +37,8 @@ export async function answerRecruitmentQuestion(
       detail: sanitizeRecruitmentRetrieverFailure(error),
     });
     return {
-      answer: "Nguon du lieu tuyen dung hien khong san sang.",
+      answer: "",
+      documents: [],
       warnings: ["RECRUITMENT_RETRIEVER_UNAVAILABLE"],
     };
   }

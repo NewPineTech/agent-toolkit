@@ -78,6 +78,21 @@ describe("prompt assets", () => {
     expect(prompt).toContain("Start directly with the answer");
   });
 
+  it("does not force repeated final-answer follow-up invitations", async () => {
+    const prompt = await readFile(
+      join(packageRoot, "src", "prompts", "synthesize-final-answer.md"),
+      "utf8",
+    );
+
+    expect(prompt).not.toContain("End with a short invitation");
+    expect(prompt).not.toContain("neu ban can ho tro");
+    expect(prompt).not.toContain("cu cho minh biet");
+    expect(prompt).toContain("Follow-up invitations are optional");
+    expect(prompt).toContain("Do not end every answer");
+    expect(prompt).toContain("Avoid fixed closing phrases");
+    expect(prompt).toContain("omit the follow-up invitation");
+  });
+
   it("guards personal identity questions from assistant self-identification", async () => {
     const [routePrompt, freeChatPrompt, finalAnswerPrompt] = await Promise.all([
       readFile(join(packageRoot, "src", "prompts", "route-intent.md"), "utf8"),
