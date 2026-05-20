@@ -10,7 +10,7 @@ usage() {
 Usage: $0 <command>
 
 Commands:
-  build       Build production Docker image
+  build       Build production Docker images
   up          Start all services (detached)
   down        Stop all services
   migrate     Run database migrations
@@ -31,7 +31,7 @@ check_env() {
 case "${1:-}" in
   build)
     check_env
-    $COMPOSE build --no-cache server
+    $COMPOSE build --no-cache server langgraph langstudio storybook
     ;;
   up)
     check_env
@@ -50,7 +50,7 @@ case "${1:-}" in
     ;;
   restart)
     check_env
-    $COMPOSE up -d --build server
+    $COMPOSE up -d --build server langgraph langstudio
     ;;
   status)
     $COMPOSE ps

@@ -1,0 +1,10 @@
+{
+  "node_version": "22",
+  "dependencies": ["."],
+  "graphs": {
+    "hr_assistant": "./src/graph.ts:hrAssistantGraph",
+    "free_chat": "./src/workflows/free-chat.ts:freeChatGraph",
+    "hr_knowledge_qa": "./src/workflows/hr-knowledge-qa.ts:hrKnowledgeQaGraph",
+    "hr_recruitment": "./src/workflows/hr-recruitment.ts:hrRecruitmentGraph"
+  }
+}

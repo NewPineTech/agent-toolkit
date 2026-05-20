@@ -1,23 +1,43 @@
 # Agent Toolkit
 
-A production-grade toolkit for embedding RAGFlow-powered chat widgets into web applications. The RAGFlow API key never leaves the server — all communication is proxied through a secure backend.
+A production-grade toolkit for embedding provider-backed chat widgets into web applications. Provider API keys never leave the server — all communication is proxied through a secure backend.
 
 ```
-[Browser Widget]                    [Your Backend (BFF)]               [RAGFlow Server]
+[Browser Widget]                    [Your Backend (BFF)]               [Provider Runtime]
   workspaceId ──► POST /widget/session ──► JWT token
-  Bearer token ──► POST /widget/chat ────► RAGFlow API (secret key) ──► Agent
+  Bearer token ──► POST /widget/chat ────► RAGFlow or LangGraph ─────► Agent
                    ◄── SSE stream ◄───────── SSE stream ◄──────────────
 ```
 
+## Why Agent Toolkit
+
+- Secure embeddable chat: browsers only receive short-lived session tokens, never provider API keys.
+- Provider adapter model: route workspaces to RAGFlow today and LangGraph-based runtimes when the assistant needs agentic workflows.
+- Production backend included: Fastify, PostgreSQL, Redis, encrypted workspace secrets, rate limiting, origin allowlists, and SSE streaming.
+- Multiple integration paths: React component, headless hook, iframe snippet, script tag, and CLI-generated embed markup.
+- Operator tooling: workspace management, chat smoke tests, usage reporting, session inspection, TUI flows, Docker deployment, and HR knowledge-base ingestion.
+
+## Use Cases
+
+- Add a customer-support or internal-knowledge chat widget to an existing web app without exposing provider credentials.
+- Run multi-tenant assistant workspaces where each tenant has its own provider agent, domains, rate limits, and auth mode.
+- Connect an HR-focused LangGraph assistant to the same widget/session/security layer used by RAGFlow.
+- Ship a private AI assistant behind your own backend-for-frontend instead of putting vendor SDK calls in the browser.
+
 ## Packages
 
-| Package                 | Description                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| `@agent-toolkit/core`   | Runtime-independent shared logic for validation, encryption, provider URLs, and embed templates |
-| `@agent-toolkit/server` | Fastify backend — session management, auth, rate limiting, SSE proxy                            |
-| `@agent-toolkit/widget` | React hook + drop-in chat component                                                             |
-| `@agent-toolkit/cli`    | End-user CLI for workspace, widget, chat, usage, session, and ingest features                   |
-| `@agent-toolkit/types`  | Shared TypeScript types, enums, and DTOs                                                        |
+| Package                  | Description                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `@agent-toolkit/core`    | Runtime-independent shared logic for validation, encryption, provider URLs, and embed templates |
+| `@agent-toolkit/server`  | Fastify backend — session management, auth, rate limiting, SSE proxy                            |
+| `@agent-toolkit/agentic` | LangGraph HR assistant runtime, intent subgraphs, prompts, retrievers, and `/chat` provider API |
+| `@agent-toolkit/widget`  | React hook + drop-in chat component                                                             |
+| `@agent-toolkit/cli`     | End-user CLI for workspace, widget, chat, usage, session, and ingest features                   |
+| `@agent-toolkit/types`   | Shared TypeScript types, enums, and DTOs                                                        |
+
+See [docs/agentic-langgraph.md](docs/agentic-langgraph.md) for the Agentic
+LangGraph runtime, Docker services, Studio workflow, and workspace provider
+settings.
 
 ### Tools
 
@@ -54,7 +74,8 @@ AGENT_TOOLKIT_DIR=my-project curl -fsSL https://raw.githubusercontent.com/NewPin
 ### 1. Clone and install
 
 ```bash
-git clone <repo-url> && cd agent-toolkit
+git clone https://github.com/NewPineTech/agent-toolkit.git
+cd agent-toolkit
 pnpm install
 ```
 
@@ -63,6 +84,9 @@ The installer links the CLI as `agent-toolkit ...` and `atk ...`. From a manual 
 ### 2. Start infrastructure
 
 ```bash
+cp .env.prod.example .env.prod
+# For local Docker-only Postgres, set POSTGRES_PASSWORD=dev_password
+# or update DATABASE_URL in .env to match your .env.prod password.
 docker compose up -d postgres redis
 ```
 
@@ -84,21 +108,37 @@ Required variables:
 
 Optional variables (with defaults):
 
-| Variable              | Default       | Description                                   |
-| --------------------- | ------------- | --------------------------------------------- |
-| `PORT`                | `3000`        | Server port                                   |
-| `HOST`                | `0.0.0.0`     | Bind address                                  |
-| `LOG_LEVEL`           | `info`        | `fatal` `error` `warn` `info` `debug` `trace` |
-| `SESSION_TTL_MINUTES` | `30`          | Widget session lifetime                       |
-| `CORS_MAX_AGE`        | `86400`       | CORS preflight cache (seconds)                |
-| `SHUTDOWN_TIMEOUT_MS` | `30000`       | Graceful shutdown timeout                     |
-| `NODE_ENV`            | `development` | `development` `production` `test`             |
+| Variable                        | Default         | Description                                      |
+| ------------------------------- | --------------- | ------------------------------------------------ |
+| `PORT`                          | `3000`          | Server port                                      |
+| `HOST`                          | `0.0.0.0`       | Bind address                                     |
+| `LOG_LEVEL`                     | `info`          | `fatal` `error` `warn` `info` `debug` `trace`    |
+| `SESSION_TTL_MINUTES`           | `30`            | Widget session lifetime                          |
+| `CORS_MAX_AGE`                  | `86400`         | CORS preflight cache (seconds)                   |
+| `SHUTDOWN_TIMEOUT_MS`           | `30000`         | Graceful shutdown timeout                        |
+| `NODE_ENV`                      | `development`   | `development` `production` `test`                |
+| `WIDGET_API_URL`                | —               | Widget build-time backend URL                    |
+| `WIDGET_STANDALONE_BUNDLE_PATH` | packaged bundle | Optional server override for `/widget/widget.js` |
+
+Agentic LangGraph variables:
+
+| Variable                        | Default   | Description                                                                   |
+| ------------------------------- | --------- | ----------------------------------------------------------------------------- |
+| `GEMINI_VERTEX_API_KEY`         | _(empty)_ | Secret for the HR assistant model wrapper; empty uses fallback behavior       |
+| `RAGFLOW_API_KEY`               | _(empty)_ | Optional HR document retriever key used by the Agentic `hr_knowledge_qa` flow |
+| `LANGGRAPH_PORT`                | `2024`    | Docker host port for the Agentic `/chat` runtime                              |
+| `LANGSTUDIO_PORT`               | `2025`    | Docker host port for the LangGraph Studio dev API                             |
+| `AI_RECRUITMENT_MCP_AUTH_TOKEN` | _(empty)_ | Optional bearer token for the HR recruitment MCP tool context                 |
 
 ### 4. Run the server
 
 ```bash
 pnpm dev
 ```
+
+`pnpm dev` starts the Fastify server, the Agentic `/chat` runtime, and the
+LangGraph Studio dev API together. Use `pnpm dev:server`,
+`pnpm dev:langgraph`, or `pnpm dev:langstudio` when you only need one process.
 
 ### 5. Embed the widget
 
@@ -124,15 +164,13 @@ function App() {
 
 ### 6. Embed via iframe (no React required)
 
-**Option A — Direct iframe tag:**
+**Option A — CLI-generated iframe tag:**
 
-````html
 Use the CLI so the iframe markup stays aligned with the shared embed template:
-```bash agent-toolkit widget iframe ws_abc123 --api-url
-https://api.yourdomain.com
-````
 
-````
+```bash
+agent-toolkit widget iframe ws_abc123 --api-url https://api.yourdomain.com
+```
 
 **Option B — Script tag (auto-init):**
 
@@ -144,7 +182,7 @@ https://api.yourdomain.com
   data-width="400px"
   data-height="600px"
 ></script>
-````
+```
 
 **Option C — Programmatic:**
 
@@ -221,7 +259,7 @@ agent-toolkit/
 │   ├── server/                      # @agent-toolkit/server
 │   │   ├── src/
 │   │   │   ├── adapters/
-│   │   │   │   ├── chat/            # Chat provider implementations (RAGFlow)
+│   │   │   │   ├── chat/            # Chat provider implementations (RAGFlow, LangGraph)
 │   │   │   │   ├── infra/           # Health checks, rate limiters, logging, session cache
 │   │   │   │   ├── security/        # AES encryption, JWT tokens, domain validation
 │   │   │   │   └── storage/         # Postgres stores, Redis caches
@@ -233,6 +271,14 @@ agent-toolkit/
 │   │   │   ├── app.ts               # DI container setup, plugin registration
 │   │   │   └── server.ts            # Entry point, graceful shutdown
 │   │   └── drizzle/                 # SQL migration files
+│   ├── agentic/                     # @agent-toolkit/agentic LangGraph HR assistant runtime
+│   │   ├── src/graph.ts             # Parent router graph with short-term memory
+│   │   ├── src/http/                # Minimal provider-compatible /chat SSE API
+│   │   ├── src/retrievers/          # HR docs and recruitment context retrieval
+│   │   ├── src/tools/               # Intent tool wrappers with graceful fallbacks
+│   │   ├── src/workflows/           # Intent subgraphs exposed to LangGraph Studio
+│   │   ├── src/prompts/             # Markdown prompt assets copied into dist
+│   │   └── langgraph.json           # Local Studio graph exports
 │   ├── widget/                      # @agent-toolkit/widget
 │   │   ├── src/
 │   │   │   ├── components/          # AgentChatWidget + Storybook stories
@@ -254,8 +300,8 @@ agent-toolkit/
 │       ├── prompts/                 # VLM & LLM prompt templates
 │       ├── data/                    # Generated output (CSV, Markdown, PDF)
 │       └── logs/                    # Per-step log files
-├── docker-compose.yml               # Postgres + Redis + server (dev stack)
-├── Dockerfile                       # Multi-stage production build
+├── docker-compose.yml               # Postgres + Redis + server + Agentic services
+├── Dockerfile                       # Multi-target build for server, Agentic runtime, and Studio
 └── pnpm-workspace.yaml              # Monorepo workspace config
 ```
 
@@ -263,7 +309,7 @@ agent-toolkit/
 
 ### Multi-Tenant Design
 
-Each workspace maps to a RAGFlow agent with its own encrypted API key, allowed domains, rate limits, and auth configuration.
+Each workspace maps to a chat provider with its own encrypted API key, allowed domains, rate limits, and auth configuration. Supported provider types include `ragflow` and `langgraph`.
 
 ```
 workspaces table
@@ -278,7 +324,42 @@ workspaces table
 
 ### Shared Core + Adapter Pattern
 
-Runtime-independent rules live in `@agent-toolkit/core` and are reused by the server, CLI, and widget package. This keeps domain allowlist validation, AES-GCM encryption, RAGFlow provider URL construction, workspace option parsing, widget embed URL generation, and iframe/snippet templates consistent across entrypoints.
+Runtime-independent rules live in `@agent-toolkit/core` and are reused by the server, CLI, and widget package. This keeps domain allowlist validation, AES-GCM encryption, provider URL construction, workspace option parsing, widget embed URL generation, and iframe/snippet templates consistent across entrypoints.
+
+### Agentic HR Runtime
+
+`@agent-toolkit/agentic` exposes a first-party LangGraph-backed provider
+runtime for HR assistants. The parent graph rewrites short follow-up questions,
+routes the standalone query to the smallest intent set, runs intent subgraphs,
+then synthesizes one final answer while preserving the widget SSE contract.
+
+Current intent subgraphs are:
+
+| Intent            | Purpose                                                                        |
+| ----------------- | ------------------------------------------------------------------------------ |
+| `free_chat`       | Greetings, assistant/user identity questions, and light conversation           |
+| `hr_knowledge_qa` | Grounded HR policy, form, document, and process answers from retrieved context |
+| `hr_recruitment`  | Recruiting workflow questions with optional `ai-recruitment` MCP context       |
+
+The recruitment MCP integration uses a hybrid plan-and-gate pattern. The
+current runtime creates a code-owned read-only search plan, validates it against
+the MCP registry, initializes the Streamable HTTP MCP session through the
+official MCP TypeScript SDK, verifies the required tool through `tools/list`,
+marks returned content as untrusted retrieved context, and falls back to local
+recruitment notes when the MCP is unavailable. Future model-proposed MCP plans
+must pass the same policy gate: read-only tools can execute automatically, while
+write/action tools require explicit approval before execution. Non-secret MCP
+settings such as endpoint URL, protocol version, search limit, timeout,
+capability/approval metadata, allowed tools, and output size live in
+`AGENTIC_MCP_REGISTRY` in `packages/agentic/src/constants.ts`. The registry also
+defines source-owned local and Docker runtime targets and the default target.
+`.env` keeps only the bearer token.
+
+Prompt behavior lives in Markdown files under `packages/agentic/src/prompts/`
+and is copied into `dist` during the package build. Keep prompt boundary changes
+covered by `prompt-loader`, router, or workflow tests. For example, user identity
+questions such as `tôi là ai` must be answered as questions about the user, not
+as assistant self-introductions.
 
 ### Adapter + Factory Pattern
 
@@ -313,7 +394,7 @@ sequenceDiagram
     participant S as Server
     participant R as Redis Cache
     participant P as PostgreSQL
-    participant RF as RAGFlow
+    participant PR as Provider
 
     W->>S: POST /widget/session { workspaceId }
     S->>R: Check workspace cache
@@ -332,17 +413,17 @@ sequenceDiagram
         S->>R: Re-cache session
     end
     alt first message (no providerSessionId)
-        S->>RF: POST /agents/{id}/sessions
-        RF-->>S: providerSessionId
+        S->>PR: Create provider session/thread
+        PR-->>S: providerSessionId
         S->>P: UPDATE session.provider_session_id
         S->>R: Update cached session
     end
-    S->>RF: POST /agents/{id}/completions (stream)
-    RF-->>S: SSE frames
+    S->>PR: Send message (stream)
+    PR-->>S: SSE frames
     S-->>W: SSE frames (relayed)
 ```
 
-Provider sessions are created lazily — the first `POST /widget/chat` triggers a RAGFlow session. This avoids wasting provider resources for sessions that never send a message. The widget persists its token in `localStorage` and reuses it until expiry, automatically re-initializing on 401 responses.
+Provider sessions are created lazily — the first `POST /widget/chat` triggers provider session/thread creation. This avoids wasting provider resources for sessions that never send a message. The widget persists its token in `localStorage` and reuses it until expiry, automatically re-initializing on 401 responses.
 
 ### SSE Streaming
 
@@ -350,11 +431,11 @@ The server acts as a transparent SSE proxy:
 
 1. Widget sends `POST /widget/chat` with a Bearer token
 2. Server verifies token, enforces rate limits, resolves the provider session
-3. Server calls RAGFlow's completion API with the secret key
-4. RAGFlow streams SSE frames back; server parses and relays token-by-token
+3. Server calls the configured provider with the decrypted provider API key
+4. Provider streams SSE frames back; server parses and relays token-by-token
 5. Widget reads the stream via `fetch()` + `ReadableStream` (not EventSource, which is GET-only)
 
-RAGFlow sends cumulative answers (each SSE frame contains the full answer so far). The `RagflowAdapter` extracts only the delta by tracking the previous answer length, converting cumulative payloads into incremental token events for the widget.
+RAGFlow sends cumulative answers, so `RagflowAdapter` extracts deltas. LangGraph streams the existing `ChatStreamEvent` shape from its `/chat` endpoint, so `LangGraphAdapter` relays compatible events directly.
 
 ### Rate Limiting
 
@@ -463,7 +544,7 @@ All error responses follow a consistent envelope:
 | `MESSAGE_TOO_LONG`   | 400  | Message exceeds workspace's `maxMessageLength`                            |
 | `SESSION_NOT_FOUND`  | 404  | Session ID not found in store or cache                                    |
 | `SESSION_EXPIRED`    | 401  | Session past its `expiresAt` timestamp                                    |
-| `PROVIDER_ERROR`     | 502  | Upstream RAGFlow returned a non-200 response                              |
+| `PROVIDER_ERROR`     | 502  | Upstream provider returned a non-200 response                             |
 | `STREAM_ERROR`       | —    | SSE-only: stream interrupted mid-response                                 |
 | `VALIDATION_ERROR`   | 400  | Request body failed JSON Schema validation                                |
 | `INTERNAL_ERROR`     | 500  | Unhandled server error (details logged, not exposed)                      |
@@ -479,10 +560,14 @@ Returns `200` if PostgreSQL and Redis are reachable, `503` otherwise. Includes p
 ## Development
 
 ```bash
-pnpm dev          # Start server with hot reload
-pnpm build        # Build all packages
-pnpm typecheck    # Type-check all packages
-pnpm test         # Run all tests
+pnpm dev             # Start server + Agentic runtime + LangGraph Studio
+pnpm dev:server      # Start only the Fastify server with hot reload
+pnpm dev:langgraph   # Start only the Agentic /chat runtime on port 2024
+pnpm dev:langstudio  # Start only the LangGraph Studio dev API on port 2025
+pnpm dev:widget      # Watch-build the widget package
+pnpm build           # Build all packages
+pnpm typecheck       # Type-check all packages
+pnpm test            # Run all tests
 ```
 
 ### Running with Docker
@@ -491,7 +576,10 @@ pnpm test         # Run all tests
 docker compose up --build
 ```
 
-This starts PostgreSQL, Redis, and the server. The server waits for both databases to be healthy before starting.
+This uses `.env.prod` and starts PostgreSQL, Redis, the server, the Agentic
+runtime, and the LangGraph Studio dev API. The server waits for PostgreSQL,
+Redis, and the Agentic runtime health check before starting. For the production
+compose file and Storybook service, use `./scripts/deploy.sh up`.
 
 ### Production Deployment
 
@@ -511,10 +599,10 @@ The server uses [Drizzle ORM](https://orm.drizzle.team/) for schema management. 
 
 ```bash
 # Generate a new migration after editing packages/server/src/db/schema.ts
-cd packages/server && npx drizzle-kit generate
+pnpm db:generate
 
 # Apply pending migrations
-cd packages/server && npx drizzle-kit migrate
+pnpm db:migrate
 ```
 
 ### Workspace CLI
@@ -555,6 +643,7 @@ atk tui
 ```
 
 In the production Docker image:
+
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml exec server atk tui
 ```
@@ -583,10 +672,10 @@ agent-toolkit chat ask ws_acme_001 "What can you help with?" \
 ```
 workspaces
 ├── id                  text PK          — public workspace identifier (e.g. "ws_abc123")
-├── provider_type       text             — "ragflow" (extensible to "dify", "langflow")
-├── provider_agent_id   text             — RAGFlow agent UUID
+├── provider_type       text             — "ragflow" or "langgraph"
+├── provider_agent_id   text             — RAGFlow agent UUID or LangGraph graph ID (e.g. "hr_assistant")
 ├── provider_api_key    text             — AES-256-GCM encrypted API key
-├── provider_base_url   text             — RAGFlow server URL
+├── provider_base_url   text             — RAGFlow server URL or Agentic runtime URL
 ├── allowed_domains     text[]           — origin allowlist for anonymous auth
 ├── auth_mode           text             — "anonymous" | "authenticated" | "both"
 ├── auth_secret         text?            — encrypted HMAC secret (authenticated mode)
@@ -598,7 +687,7 @@ workspaces
 sessions
 ├── id                  text PK          — server-generated session ID
 ├── workspace_id        text FK → workspaces(id) ON DELETE CASCADE
-├── provider_session_id text?            — lazily created RAGFlow session ID
+├── provider_session_id text?            — lazily created provider session/thread ID
 ├── user_id             text?            — from authenticated JWT payload
 ├── user_fingerprint    text?            — anonymous user tracking
 ├── metadata            jsonb            — extensible session data
@@ -625,24 +714,30 @@ cd packages/widget && pnpm storybook
 
 ## Testing
 
-142 tests across 21 files.
+Vitest is the primary test runner across packages.
 
 ```bash
-# Unit tests only (adapters + factories)
+# Full workspace suite
+pnpm test
+
+# Server adapters, factories, routes, storage, auth, and rate limiting
 pnpm --filter @agent-toolkit/server run test
 
-# With coverage report
-cd packages/server && npx vitest run --coverage
+# Agentic graph, prompts, retrievers, model wrapper, and provider HTTP API
+pnpm --filter @agent-toolkit/agentic run test
+
+# Widget component, hook, and embed-loader unit tests
+pnpm --filter @agent-toolkit/widget run test
+
+# Storybook interaction/accessibility tests
+pnpm --filter @agent-toolkit/widget run test:storybook
 ```
 
-| Area                 | Files | Tests | Coverage |
-| -------------------- | ----- | ----- | -------- |
-| Security adapters    | 3     | 26    | 100%     |
-| Infra adapters       | 5     | 28    | 100%     |
-| Storage adapters     | 4     | 19    | 100%     |
-| Chat adapter         | 1     | 10    | 90%      |
-| Factories            | 5     | 29    | 97%      |
-| Integration (routes) | 1     | 12    | —        |
+Use package-local checks while iterating, then run broader `pnpm test`,
+`pnpm typecheck`, and `pnpm build` before shipping cross-package changes.
+Prompt changes in `packages/agentic` should include tests that assert the prompt
+asset, router behavior, or workflow model request that protects the changed
+boundary.
 
 ## Knowledge Base Ingest Pipeline
 
@@ -762,6 +857,7 @@ The hook tracks a cursor position via `useRef` and advances it by `charsPerTick`
 ## Security Checklist
 
 - [x] RAGFlow API keys encrypted at rest (AES-256-GCM, random IV per encrypt)
+- [x] LangGraph provider API keys encrypted at rest through the same workspace provider field
 - [x] API keys never sent to the browser
 - [x] Short-lived JWT session tokens (configurable TTL)
 - [x] Origin/domain allowlist for anonymous widget sessions
@@ -774,6 +870,6 @@ The hook tracks a cursor position via `useRef` and advances it by `charsPerTick`
 
 ## License
 
-Private
+No open-source license has been selected yet. Until a license is added, the repository is public source code but not open source for reuse or redistribution.
 
 <!-- - Context tham khảo từ KB (có thể rỗng): {Retrieval:ShyHoundsFetch@formalized_content} -->

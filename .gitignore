@@ -54,3 +54,5 @@ example.script.txt
 
 .agents/
 .langgraph_api/
+
+skills-lock.json

@@ -9,6 +9,9 @@ dist
 history
 coverage
 *.md
+!packages/agentic/src/prompts/*.md
+!packages/agentic/langgraph.json
+!packages/agentic/langgraph.docker.json
 .env
 .env.*
 docker-compose.override.yml

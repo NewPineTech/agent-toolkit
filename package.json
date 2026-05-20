@@ -7,7 +7,11 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "pnpm --filter @agent-toolkit/server run dev",
+    "dev": "pnpm -w run \"/^dev:(server|langgraph|langstudio)$/\"",
+    "dev:server": "pnpm --filter @agent-toolkit/server run dev",
+    "dev:langgraph": "pnpm --filter @agent-toolkit/agentic run dev:server",
+    "dev:langstudio": "pnpm --filter @agent-toolkit/agentic run dev",
+    "dev:admin": "pnpm --filter @agent-toolkit/admin run dev",
     "dev:widget": "pnpm --filter @agent-toolkit/widget run dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -24,6 +28,11 @@
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.2"
+    }
   },
   "devDependencies": {
     "@agent-toolkit/cli": "workspace:*",
