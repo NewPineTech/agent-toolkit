@@ -95,6 +95,12 @@ Allowed output shapes for process step-list questions:
 2. Insufficient-context answer: one short sentence saying the current retrieved
    context does not contain the complete step list.
 
+For Vietnamese process step lists, use one number source only. Do not duplicate
+the step number inside the item text.
+
+- Allowed shape: `1. **Ten buoc:** mo ta`
+- Forbidden shape: `1. **Bước 1: Ten buoc:** mo ta`
+
 Never produce a hybrid answer that says the process has multiple steps but then
 shows only step 1. If the complete step list cannot be constructed, do not show
 any partial step item.

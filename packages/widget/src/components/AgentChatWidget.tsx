@@ -2,6 +2,7 @@ import React, {
   useState,
   useRef,
   useEffect,
+  useLayoutEffect,
   useCallback,
   type KeyboardEvent,
 } from "react";
@@ -23,6 +24,9 @@ import {
   type ChatTheme,
 } from "./styles.js";
 
+const useIsomorphicLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 export interface AgentChatWidgetProps extends UseAgentChatOptions {
   theme?: ChatTheme;
   initialOpen?: boolean;
@@ -33,7 +37,7 @@ export interface AgentChatWidgetProps extends UseAgentChatOptions {
   botName?: string;
   /** Custom avatar element displayed for the bot. Accepts any React node: SVG, image, icon component, etc. Falls back to the built-in sun-burst avatar when omitted. */
   botAvatar?: React.ReactNode;
-  /** When true, the message list auto-scrolls to the bottom while the assistant is typing. @default true */
+  /** When true, the message list keeps following new content while the assistant is typing. @default false */
   autoScroll?: boolean;
   /** Called when the chat panel is opened or closed. */
   onToggle?: (isOpen: boolean) => void;
@@ -105,7 +109,7 @@ export function AgentChatWidget(props: AgentChatWidgetProps) {
     suggestions,
     botName = "Trợ lý",
     botAvatar,
-    autoScroll = true,
+    autoScroll = false,
     onToggle,
     ...hookOptions
   } = props;
@@ -239,12 +243,15 @@ function ChatPanel(props: {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animatingMsgRef = useRef<string | null>(null);
+  const pendingAssistantIdsRef = useRef(new Set<string>());
+  const didScrollOnOpenRef = useRef(false);
 
   const handleAnimatingChange = useCallback(
     (animating: boolean) => {
       setIsTyping(animating);
       if (!animating && animatingMsgRef.current) {
         onMessageAnimated(animatingMsgRef.current);
+        pendingAssistantIdsRef.current.delete(animatingMsgRef.current);
         animatingMsgRef.current = null;
       }
     },
@@ -253,21 +260,28 @@ function ChatPanel(props: {
 
   const isBusy = isLoading || isTyping;
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  };
+  }, []);
+
+  useIsomorphicLayoutEffect(() => {
+    if (didScrollOnOpenRef.current) return;
+
+    scrollToBottom();
+    if (messages.length > 0) didScrollOnOpenRef.current = true;
+  }, [messages.length, scrollToBottom]);
 
   useEffect(() => {
     if (autoScroll) scrollToBottom();
-  }, [messages, autoScroll]);
+  }, [messages, autoScroll, scrollToBottom]);
 
   useEffect(() => {
     if (!autoScroll || !isBusy) return;
     const id = setInterval(scrollToBottom, 60);
     return () => clearInterval(id);
-  }, [autoScroll, isBusy]);
+  }, [autoScroll, isBusy, scrollToBottom]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -372,10 +386,16 @@ function ChatPanel(props: {
         ) : (
           <>
             {messages.map((msg, idx) => {
-              if (msg.role === "assistant" && !msg.content) return null;
+              if (msg.role === "assistant" && !msg.content) {
+                pendingAssistantIdsRef.current.add(msg.id);
+                return null;
+              }
               const isLastAssistant =
                 msg.role === "assistant" && idx === messages.length - 1;
-              const shouldAnimate = isLastAssistant && !animatedIds.has(msg.id);
+              const shouldAnimate =
+                isLastAssistant &&
+                !animatedIds.has(msg.id) &&
+                pendingAssistantIdsRef.current.has(msg.id);
               if (shouldAnimate) animatingMsgRef.current = msg.id;
               return (
                 <MessageBubble

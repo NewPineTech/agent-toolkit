@@ -37,6 +37,7 @@ const recruitmentDomainTerms = [
   "recruitment",
   "hiring",
   "tuyen dung",
+  "tuyển dụng"
 ];
 
 const knowledgeTerms = [

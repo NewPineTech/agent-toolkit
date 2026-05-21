@@ -258,7 +258,7 @@ def extract_process_name(markdown: str, file_record: dict) -> str:
 
 
 def build_source_metadata_block(markdown: str, file_record: dict) -> str:
-    """Build form-style source metadata block for Markdown header/footer."""
+    """Build form-style source metadata block for Markdown footer."""
     return (
         f"---\n\n"
         f"<!-- Source metadata (do not edit) -->\n"
@@ -275,10 +275,27 @@ def build_source_metadata_block(markdown: str, file_record: dict) -> str:
     )
 
 
+def add_origin_link_to_document_info(markdown: str, source_url: str) -> str:
+    """Add visible origin URL to [THÔNG TIN TÀI LIỆU] for RAGFlow chunks."""
+    if re.search(r"^Link file gốc:\s*", markdown, re.MULTILINE):
+        return markdown
+
+    section_marker = "[THÔNG TIN TÀI LIỆU]"
+    if section_marker in markdown:
+        return markdown.replace(
+            section_marker,
+            f"{section_marker}\nLink file gốc: {source_url}",
+            1,
+        )
+
+    return f"---\n{section_marker}\nLink file gốc: {source_url}\n---\n\n{markdown.lstrip()}"
+
+
 def append_source_metadata(markdown: str, file_record: dict) -> str:
-    """Thêm metadata cùng format form files ở đầu và cuối Markdown."""
+    """Add visible origin link and append parseable metadata footer."""
+    markdown = add_origin_link_to_document_info(markdown, file_record["web_view_link"])
     metadata = build_source_metadata_block(markdown, file_record)
-    return f"{metadata}\n{markdown.rstrip()}\n\n{metadata}"
+    return f"{markdown.rstrip()}\n\n{metadata}"
 
 
 # ============================================================

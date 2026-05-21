@@ -132,6 +132,8 @@ describe("prompt assets", () => {
         "utf8",
       ),
     ]);
+    const normalizedHrKnowledgePrompt = normalizeWhitespace(hrKnowledgePrompt);
+    const normalizedFinalAnswerPrompt = normalizeWhitespace(finalAnswerPrompt);
 
     expect(hrKnowledgePrompt).toContain("Process Step List Rule");
     expect(hrKnowledgePrompt).toContain(
@@ -144,6 +146,11 @@ describe("prompt assets", () => {
     expect(hrKnowledgePrompt).toContain("partial step item");
     expect(hrKnowledgePrompt).toContain("Bước đầu tiên là");
     expect(hrKnowledgePrompt).toContain("Do not ask whether the user wants");
+    expect(normalizedHrKnowledgePrompt).toContain(
+      "Do not duplicate the step number inside the item text",
+    );
+    expect(hrKnowledgePrompt).toContain("1. **Ten buoc:** mo ta");
+    expect(hrKnowledgePrompt).toContain("1. **Bước 1:");
     expect(finalAnswerPrompt).toContain("Complete Step Lists");
     expect(finalAnswerPrompt).toContain("Do not shorten a complete step list");
     expect(finalAnswerPrompt).toContain(
@@ -151,6 +158,11 @@ describe("prompt assets", () => {
     );
     expect(finalAnswerPrompt).toContain("Forbidden final-answer phrases");
     expect(finalAnswerPrompt).toContain("Do not replace it with a follow-up");
+    expect(normalizedFinalAnswerPrompt).toContain(
+      "Do not duplicate the step number inside the item text",
+    );
+    expect(finalAnswerPrompt).toContain("1. **Ten buoc:** mo ta");
+    expect(finalAnswerPrompt).toContain("1. **Bước 1:");
   });
 
   it("copies prompts into dist during build", async () => {

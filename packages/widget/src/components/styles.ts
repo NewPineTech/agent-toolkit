@@ -76,6 +76,7 @@ export const MARKDOWN_CSS = `
 .rcw-markdown {
   line-height: 1.55;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .rcw-markdown > :first-child { margin-top: 0; }
 .rcw-markdown > :last-child { margin-bottom: 0; }
@@ -114,10 +115,10 @@ export const MARKDOWN_CSS = `
 
 .rcw-markdown ul, .rcw-markdown ol {
   margin: 4px 0;
-  padding-left: 20px;
+  padding-left: 18px;
 }
 .rcw-markdown li {
-  margin: 2px 0;
+  margin: 4px 0;
 }
 .rcw-markdown li > p {
   margin: 0;

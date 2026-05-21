@@ -136,4 +136,80 @@ describe("HR assistant parent graph", () => {
       expect.anything(),
     );
   });
+
+  it("normalizes duplicated Vietnamese step labels in synthesized answers", async () => {
+    process.env.RAGFLOW_API_KEY = "ragflow-secret";
+    process.env.GEMINI_VERTEX_API_KEY = "vertex-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              chunks: [
+                {
+                  id: "process-complete",
+                  document_keyword: "QT tuyen dung",
+                  content_with_weight:
+                    "Tổng số bước: 2. Bước 1: Đề xuất và Tổng hợp nhu cầu. Bước 2: Đánh giá, phân tích.",
+                  similarity: 0.86,
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const generateModelResponse = vi
+      .spyOn(modelModule, "generateModelResponse")
+      .mockImplementation(async (request) => {
+        if (request.prompt.includes("Workflow results:")) {
+          return {
+            content: [
+              "Quy trinh tuyen dung gom 2 buoc:",
+              "",
+              "1. **Bước 1: Đề xuất và Tổng hợp nhu cầu:** Bộ phận co nhu cau lam de xuat.",
+              "2. **Bước 2: Đánh giá, phân tích:** Phong Nhan su xem xet nhu cau.",
+            ].join("\n"),
+            warnings: [],
+          };
+        }
+
+        if (request.prompt.includes("Standalone query:")) {
+          return { content: "hr_knowledge_qa", warnings: [] };
+        }
+
+        if (request.prompt.includes("Question:")) {
+          return {
+            content: [
+              "Quy trinh tuyen dung gom 2 buoc:",
+              "",
+              "1. **Bước 1: Đề xuất và Tổng hợp nhu cầu:** Bộ phận co nhu cau lam de xuat.",
+              "2. **Bước 2: Đánh giá, phân tích:** Phong Nhan su xem xet nhu cau.",
+            ].join("\n"),
+            warnings: [],
+          };
+        }
+
+        return { content: "", warnings: [] };
+      });
+
+    const result = await hrAssistantGraph.invoke(
+      { message: "Quy trình tuyển dụng gồm các bước nào?" },
+      { configurable: { thread_id: "normalize-step-labels-test" } },
+    );
+
+    expect(result.finalAnswer).toContain("1. **Đề xuất và Tổng hợp nhu cầu:**");
+    expect(result.finalAnswer).toContain("2. **Đánh giá, phân tích:**");
+    expect(result.finalAnswer).not.toContain("1. **Bước 1:");
+    expect(result.finalAnswer).not.toContain("2. **Bước 2:");
+    expect(generateModelResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("Workflow results:"),
+      }),
+      expect.anything(),
+    );
+  });
 });

@@ -246,6 +246,97 @@ describe("AgentChatWidget — typewriter integration", () => {
     expect(reopenedMd?.textContent).toBe("Hello world");
   });
 
+  it("scrolls to the bottom when the chat panel is opened", async () => {
+    localStorage.setItem(
+      "agent_chat_session:ws_test",
+      JSON.stringify({
+        token: "test-jwt-token",
+        sessionId: "sess_test",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }),
+    );
+    localStorage.setItem(
+      "agent_chat_history:sess_test",
+      JSON.stringify([
+        {
+          id: "msg_user",
+          role: "user",
+          content: "Saved question",
+          timestamp: new Date("2026-05-20T08:00:00.000Z").toISOString(),
+        },
+        {
+          id: "msg_assistant",
+          role: "assistant",
+          content: "Saved answer",
+          timestamp: new Date("2026-05-20T08:00:01.000Z").toISOString(),
+        },
+      ]),
+    );
+
+    const scrollHeightSpy = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains("rcw-scrollarea") ? 640 : 0;
+      });
+
+    try {
+      render(<AgentChatWidget workspaceId="ws_test" />);
+      await flushAsync(100);
+
+      fireEvent.click(screen.getByLabelText("Open chat"));
+      await flushAsync(0);
+
+      const messageList = document.querySelector(
+        ".rcw-scrollarea",
+      ) as HTMLDivElement | null;
+
+      expect(messageList?.scrollTop).toBe(640);
+    } finally {
+      scrollHeightSpy.mockRestore();
+    }
+  });
+
+  it("renders restored assistant history immediately when the chat panel is opened", async () => {
+    localStorage.setItem(
+      "agent_chat_session:ws_test",
+      JSON.stringify({
+        token: "test-jwt-token",
+        sessionId: "sess_test",
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      }),
+    );
+    localStorage.setItem(
+      "agent_chat_history:sess_test",
+      JSON.stringify([
+        {
+          id: "msg_user",
+          role: "user",
+          content: "Saved question",
+          timestamp: new Date("2026-05-20T08:00:00.000Z").toISOString(),
+        },
+        {
+          id: "msg_assistant",
+          role: "assistant",
+          content:
+            "Saved answer that should not replay as a typewriter animation.",
+          timestamp: new Date("2026-05-20T08:00:01.000Z").toISOString(),
+        },
+      ]),
+    );
+
+    render(<AgentChatWidget workspaceId="ws_test" />);
+    await flushAsync(100);
+
+    fireEvent.click(screen.getByLabelText("Open chat"));
+    await flushAsync(0);
+
+    expect(
+      screen.getByText(
+        "Saved answer that should not replay as a typewriter animation.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("restores message history stored for the current session", async () => {
     localStorage.setItem(
       "agent_chat_session:ws_test",

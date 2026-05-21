@@ -17,6 +17,7 @@ import {
 import { freeChatGraph } from "./workflows/free-chat.js";
 import { hrKnowledgeQaGraph } from "./workflows/hr-knowledge-qa.js";
 import { hrRecruitmentGraph } from "./workflows/hr-recruitment.js";
+import { normalizeFinalAnswerMarkdown } from "./final-answer-format.js";
 
 function validateInputNode(state: AgenticState) {
   validateInput(state);
@@ -121,10 +122,12 @@ async function synthesizeFinalAnswerNode(state: AgenticState) {
 
   if (state.workflowResults.some(hasBlockingEvidence)) {
     return {
-      finalAnswer: state.workflowResults
-        .map((result) => result.answer)
-        .filter(Boolean)
-        .join("\n\n"),
+      finalAnswer: normalizeFinalAnswerMarkdown(
+        state.workflowResults
+          .map((result) => result.answer)
+          .filter(Boolean)
+          .join("\n\n"),
+      ),
     };
   }
 
@@ -155,16 +158,18 @@ async function synthesizeFinalAnswerNode(state: AgenticState) {
     );
 
     return {
-      finalAnswer: response.content,
+      finalAnswer: normalizeFinalAnswerMarkdown(response.content),
       warnings: uniqueWarnings([...state.warnings, ...response.warnings]),
     };
   }
 
   return {
-    finalAnswer: state.workflowResults
-      .map((result) => result.answer)
-      .filter(Boolean)
-      .join("\n\n"),
+    finalAnswer: normalizeFinalAnswerMarkdown(
+      state.workflowResults
+        .map((result) => result.answer)
+        .filter(Boolean)
+        .join("\n\n"),
+    ),
   };
 }
 
